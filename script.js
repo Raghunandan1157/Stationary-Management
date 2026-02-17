@@ -663,7 +663,7 @@ function renderReports() {
 
   // --- Column 1: Today's Report ---
   html += `
-    <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div id="report-today" class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div class="p-6 border-b border-slate-200 dark:border-slate-800">
         <div class="flex items-center gap-3 mb-1">
           <span class="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
@@ -694,7 +694,7 @@ function renderReports() {
 
   // --- Column 2: Month-to-Date Report ---
   html += `
-    <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div id="report-mtd" class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div class="p-6 border-b border-slate-200 dark:border-slate-800">
         <div class="flex items-center gap-3 mb-1">
           <span class="p-2 bg-primary/10 text-primary rounded-lg">
@@ -1134,6 +1134,65 @@ function exportReportsToExcel() {
 
   XLSX.writeFile(wb, 'Reports_' + todayStr + '.xlsx');
   showToast('Reports Excel downloaded');
+}
+
+async function shareReports() {
+  const todayEl = document.getElementById('report-today');
+  const mtdEl = document.getElementById('report-mtd');
+
+  if (!todayEl || !mtdEl) {
+    showToast('Please open the Reports page first', 'delete');
+    return;
+  }
+
+  showToast('Preparing images...');
+
+  try {
+    const isDark = document.documentElement.classList.contains('dark');
+    const canvasOpts = {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: isDark ? '#1c2631' : '#ffffff',
+    };
+
+    const [todayCanvas, mtdCanvas] = await Promise.all([
+      html2canvas(todayEl, canvasOpts),
+      html2canvas(mtdEl, canvasOpts),
+    ]);
+
+    const todayBlob = await new Promise(r => todayCanvas.toBlob(r, 'image/png'));
+    const mtdBlob = await new Promise(r => mtdCanvas.toBlob(r, 'image/png'));
+
+    const todayFile = new File([todayBlob], 'Todays_Report.png', { type: 'image/png' });
+    const mtdFile = new File([mtdBlob], 'Month_to_Date_Report.png', { type: 'image/png' });
+
+    if (navigator.canShare && navigator.canShare({ files: [todayFile, mtdFile] })) {
+      await navigator.share({
+        title: 'Stock Reports',
+        text: 'Today\'s Report & Month to Date Report - ' + (selectedLocation || 'StockRegister'),
+        files: [todayFile, mtdFile],
+      });
+    } else {
+      // Fallback: download both images
+      const link = document.createElement('a');
+      link.download = 'Todays_Report.png';
+      link.href = todayCanvas.toDataURL('image/png');
+      link.click();
+
+      setTimeout(() => {
+        link.download = 'Month_to_Date_Report.png';
+        link.href = mtdCanvas.toDataURL('image/png');
+        link.click();
+      }, 500);
+
+      showToast('Share not supported — images downloaded instead');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      console.error('Share failed:', err);
+      showToast('Failed to share reports', 'delete');
+    }
+  }
 }
 
 // --- NEW ENTRY PAGE ---
