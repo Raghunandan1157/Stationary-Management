@@ -1018,6 +1018,75 @@ function exportInventoryToExcel() {
   showToast('Excel file downloaded');
 }
 
+function exportReportsToExcel() {
+  const txns = appData.transactions;
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const todayTxns = txns.filter(t => t.date.slice(0, 10) === todayStr);
+  const mtdTxns = txns.filter(t => new Date(t.date) >= monthStart);
+
+  // Sheet 1: Today's transactions
+  const todayRows = todayTxns.map(t => ({
+    'Item': t.itemName,
+    'HSN Code': t.sku,
+    'Type': t.type === 'in' ? 'Stock In' : 'Stock Out',
+    'Quantity': t.qty,
+    'Date & Time': formatDate(t.date),
+    'User': t.user,
+  }));
+
+  // Sheet 2: MTD transactions
+  const mtdRows = mtdTxns.map(t => ({
+    'Item': t.itemName,
+    'HSN Code': t.sku,
+    'Type': t.type === 'in' ? 'Stock In' : 'Stock Out',
+    'Quantity': t.qty,
+    'Date & Time': formatDate(t.date),
+    'User': t.user,
+  }));
+
+  // Sheet 3: Summary
+  const todayIn = todayTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const todayOut = todayTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+  const mtdIn = mtdTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const mtdOut = mtdTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+  const closingStock = appData.inventory.reduce((s, i) => s + i.qty, 0);
+  const lowStock = appData.inventory.filter(i => i.qty <= i.reorder).length;
+
+  const summaryRows = [
+    { 'Metric': 'Today - Total Transactions', 'Value': todayTxns.length },
+    { 'Metric': 'Today - Stock In (qty)', 'Value': todayIn },
+    { 'Metric': 'Today - Stock Out (qty)', 'Value': todayOut },
+    { 'Metric': 'Today - Net Movement', 'Value': todayIn - todayOut },
+    { 'Metric': 'MTD - Total Transactions', 'Value': mtdTxns.length },
+    { 'Metric': 'MTD - Stock In (qty)', 'Value': mtdIn },
+    { 'Metric': 'MTD - Stock Out (qty)', 'Value': mtdOut },
+    { 'Metric': 'MTD - Net Movement', 'Value': mtdIn - mtdOut },
+    { 'Metric': 'Closing Stock', 'Value': closingStock },
+    { 'Metric': 'Low Stock Items', 'Value': lowStock },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const colWidths = [{ wch: 28 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
+
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 30 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+  const wsToday = XLSX.utils.json_to_sheet(todayRows.length ? todayRows : [{ 'Item': 'No transactions today' }]);
+  wsToday['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, wsToday, 'Today');
+
+  const wsMtd = XLSX.utils.json_to_sheet(mtdRows.length ? mtdRows : [{ 'Item': 'No transactions this month' }]);
+  wsMtd['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, wsMtd, 'Month to Date');
+
+  XLSX.writeFile(wb, 'Reports_' + todayStr + '.xlsx');
+  showToast('Reports Excel downloaded');
+}
+
 // --- NEW ENTRY PAGE ---
 
 function renderNewEntryPage() {
