@@ -262,68 +262,122 @@ function renderSuppliers() {
 
 function renderReports() {
   const inv = appData.inventory;
-  const categories = {};
-  inv.forEach(i => {
-    if (!categories[i.category]) categories[i.category] = { count: 0, qty: 0, low: 0 };
-    categories[i.category].count++;
-    categories[i.category].qty += i.qty;
-    if (i.qty <= i.reorder) categories[i.category].low++;
-  });
+  const txns = appData.transactions;
 
-  const totalQty = inv.reduce((s, i) => s + i.qty, 0);
-  const maxCatQty = Math.max(...Object.values(categories).map(c => c.qty));
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Today's transactions
+  const todayTxns = txns.filter(t => t.date.slice(0, 10) === todayStr);
+  const todayIn = todayTxns.filter(t => t.type === 'in');
+  const todayOut = todayTxns.filter(t => t.type === 'out');
+  const todayInQty = todayIn.reduce((s, t) => s + t.qty, 0);
+  const todayOutQty = todayOut.reduce((s, t) => s + t.qty, 0);
+
+  // Month-to-date transactions
+  const mtdTxns = txns.filter(t => new Date(t.date) >= monthStart);
+  const mtdIn = mtdTxns.filter(t => t.type === 'in');
+  const mtdOut = mtdTxns.filter(t => t.type === 'out');
+  const mtdInQty = mtdIn.reduce((s, t) => s + t.qty, 0);
+  const mtdOutQty = mtdOut.reduce((s, t) => s + t.qty, 0);
+
+  // Closing stock
+  const closingStock = inv.reduce((s, i) => s + i.qty, 0);
+  const lowStockCount = inv.filter(i => i.qty <= i.reorder).length;
+
+  // Month name
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const currentMonth = monthNames[now.getMonth()];
+
+  // Format today
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const todayFormatted = `${dayNames[now.getDay()]}, ${now.getDate()} ${currentMonth.slice(0,3)} ${now.getFullYear()}`;
+
+  function buildRow(label, value, accent) {
+    const valClass = accent === 'green' ? 'text-green-500' : accent === 'red' ? 'text-red-500' : 'font-bold text-slate-800 dark:text-white';
+    return `
+      <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
+        <span class="text-sm text-slate-500 dark:text-slate-400">${label}</span>
+        <span class="font-bold ${valClass}">${value}</span>
+      </div>`;
+  }
+
+  function buildTxnList(list) {
+    if (list.length === 0) return '<p class="text-sm text-slate-400 dark:text-slate-500 py-2 text-center">No transactions</p>';
+    return list.map(t => `
+      <div class="flex items-center justify-between py-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="material-symbols-outlined text-sm ${t.type === 'in' ? 'text-green-500' : 'text-red-400'}">${t.type === 'in' ? 'arrow_downward' : 'arrow_upward'}</span>
+          <span class="text-sm text-slate-700 dark:text-slate-300 truncate">${escHtml(t.itemName)}</span>
+        </div>
+        <span class="text-sm font-semibold ${t.type === 'in' ? 'text-green-500' : 'text-red-400'} flex-shrink-0 ml-3">${t.type === 'in' ? '+' : '-'}${t.qty}</span>
+      </div>
+    `).join('');
+  }
 
   let html = '';
 
-  // Category breakdown
+  // --- Column 1: Today's Report ---
   html += `
-    <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <h4 class="text-lg font-bold text-slate-800 dark:text-white mb-6">Stock by Category</h4>
-      <div class="space-y-4">
-        ${Object.entries(categories).map(([cat, d]) => `
+    <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+            <span class="material-symbols-outlined">today</span>
+          </span>
           <div>
-            <div class="flex justify-between text-sm mb-1">
-              <span class="font-medium text-slate-700 dark:text-slate-300">${escHtml(cat)}</span>
-              <span class="text-slate-500 dark:text-slate-400">${d.qty.toLocaleString()} units (${d.count} items)</span>
-            </div>
-            <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-primary rounded-full" style="width: ${(d.qty / maxCatQty * 100).toFixed(1)}%"></div>
-            </div>
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Today's Report</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400">${todayFormatted}</p>
           </div>
-        `).join('')}
+        </div>
+      </div>
+      <div class="p-6 space-y-0">
+        ${buildRow('Total Transactions', todayTxns.length)}
+        ${buildRow('Stock In (entries)', todayIn.length)}
+        ${buildRow('Stock In (qty)', '+' + todayInQty.toLocaleString() + ' units', 'green')}
+        ${buildRow('Stock Out (entries)', todayOut.length)}
+        ${buildRow('Stock Out (qty)', '-' + todayOutQty.toLocaleString() + ' units', 'red')}
+        ${buildRow('Net Movement', (todayInQty - todayOutQty >= 0 ? '+' : '') + (todayInQty - todayOutQty).toLocaleString() + ' units')}
+      </div>
+      <div class="px-6 pb-2">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Today's Activity</p>
+      </div>
+      <div class="px-6 pb-6 max-h-48 overflow-y-auto">
+        ${buildTxnList(todayTxns)}
       </div>
     </div>
   `;
 
-  // Summary stats
+  // --- Column 2: Month-to-Date Report ---
   html += `
-    <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <h4 class="text-lg font-bold text-slate-800 dark:text-white mb-6">Summary</h4>
-      <div class="space-y-4">
-        <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Total Items</span>
-          <span class="font-bold text-slate-800 dark:text-white">${inv.length}</span>
+    <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="p-2 bg-primary/10 text-primary rounded-lg">
+            <span class="material-symbols-outlined">date_range</span>
+          </span>
+          <div>
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Month to Date</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400">1 ${currentMonth.slice(0,3)} – ${now.getDate()} ${currentMonth.slice(0,3)} ${now.getFullYear()}</p>
+          </div>
         </div>
-        <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Total Stock</span>
-          <span class="font-bold text-slate-800 dark:text-white">${totalQty.toLocaleString()} units</span>
-        </div>
-        <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Categories</span>
-          <span class="font-bold text-slate-800 dark:text-white">${Object.keys(categories).length}</span>
-        </div>
-        <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Low Stock Items</span>
-          <span class="font-bold text-red-500">${inv.filter(i => i.qty <= i.reorder).length}</span>
-        </div>
-        <div class="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Total Transactions</span>
-          <span class="font-bold text-slate-800 dark:text-white">${appData.transactions.length}</span>
-        </div>
-        <div class="flex justify-between items-center py-3">
-          <span class="text-sm text-slate-500 dark:text-slate-400">Active Suppliers</span>
-          <span class="font-bold text-slate-800 dark:text-white">${appData.suppliers.filter(s => s.status === 'active').length}</span>
-        </div>
+      </div>
+      <div class="p-6 space-y-0">
+        ${buildRow('Total Transactions', mtdTxns.length)}
+        ${buildRow('Stock In (entries)', mtdIn.length)}
+        ${buildRow('Stock In (qty)', '+' + mtdInQty.toLocaleString() + ' units', 'green')}
+        ${buildRow('Stock Out (entries)', mtdOut.length)}
+        ${buildRow('Stock Out (qty)', '-' + mtdOutQty.toLocaleString() + ' units', 'red')}
+        ${buildRow('Net Movement', (mtdInQty - mtdOutQty >= 0 ? '+' : '') + (mtdInQty - mtdOutQty).toLocaleString() + ' units')}
+        ${buildRow('Closing Stock', closingStock.toLocaleString() + ' units')}
+        ${buildRow('Low Stock Items', lowStockCount, lowStockCount > 0 ? 'red' : '')}
+      </div>
+      <div class="px-6 pb-2">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">MTD Activity</p>
+      </div>
+      <div class="px-6 pb-6 max-h-48 overflow-y-auto">
+        ${buildTxnList(mtdTxns)}
       </div>
     </div>
   `;
@@ -493,9 +547,11 @@ function renderFilteredInventory(items) {
 
 function toggleTheme() {
   const html = document.documentElement;
-  const icon = document.getElementById('theme-icon');
   html.classList.toggle('dark');
-  icon.textContent = html.classList.contains('dark') ? 'dark_mode' : 'light_mode';
+  const isDark = html.classList.contains('dark');
+  document.getElementById('theme-icon').textContent = isDark ? 'dark_mode' : 'light_mode';
+  const headerIcon = document.getElementById('header-theme-icon');
+  if (headerIcon) headerIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
 }
 
 // --- MOBILE MENU ---
