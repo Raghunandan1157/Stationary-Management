@@ -91,6 +91,36 @@
         Start Session
       </button>
     </div>
+
+    <!-- Step 3: Head Office OTP -->
+    <div id="login-step3" class="hidden bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <button onclick="loginBackFromOTP()" class="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+          <h3 class="text-lg font-bold text-slate-800 dark:text-white">Head Office Login</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400">Verify your identity</p>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
+        <input id="login-ho-username" type="text" value="Head Office" readonly class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed"/>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Enter OTP</label>
+        <input id="login-ho-otp" type="password" placeholder="Enter 4-digit OTP" maxlength="4" class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent"/>
+      </div>
+
+      <div id="login-otp-error" class="hidden mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400"></div>
+
+      <button onclick="loginHeadOfficeOTP()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+        <span class="material-symbols-outlined text-base">verified_user</span>
+        Verify &amp; Login
+      </button>
+    </div>
   </div>
 </div>
 
@@ -105,7 +135,8 @@
       <h1 class="text-xl font-bold tracking-tight text-slate-800 dark:text-white">StockRegister</h1>
     </div>
 
-    <nav class="flex-1 px-4 space-y-1 mt-4">
+    <!-- Regular Branch Nav -->
+    <nav id="nav-regular" class="flex-1 px-4 space-y-1 mt-4">
       <a class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold" href="#" data-page="dashboard">
         <span class="material-symbols-outlined">dashboard</span>
         Dashboard
@@ -123,6 +154,22 @@
         Suppliers
       </a>
       <a class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="reports">
+        <span class="material-symbols-outlined">bar_chart</span>
+        Reports
+      </a>
+      <button onclick="logout()" class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors w-full mt-2">
+        <span class="material-symbols-outlined">logout</span>
+        Logout
+      </button>
+    </nav>
+
+    <!-- Admin Nav (Head Office) -->
+    <nav id="nav-admin" class="hidden flex-1 px-4 space-y-1 mt-4">
+      <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold" href="#" data-page="admin">
+        <span class="material-symbols-outlined">admin_panel_settings</span>
+        Admin Dashboard
+      </a>
+      <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="reports">
         <span class="material-symbols-outlined">bar_chart</span>
         Reports
       </a>
@@ -297,6 +344,7 @@
                     <th class="px-6 py-4 font-semibold">Quantity</th>
                     <th class="px-6 py-4 font-semibold">Date & Time</th>
                     <th class="px-6 py-4 font-semibold">User</th>
+                    <th class="px-6 py-4 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="movements-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -376,6 +424,7 @@
                   <th class="px-6 py-4 font-semibold">Quantity</th>
                   <th class="px-6 py-4 font-semibold">Date & Time</th>
                   <th class="px-6 py-4 font-semibold">User</th>
+                  <th class="px-6 py-4 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody id="transactions-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -401,7 +450,7 @@
 
       <!-- ===== REPORTS PAGE ===== -->
       <div id="page-reports" class="hidden">
-        <div class="flex items-center justify-between mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Reports</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400">Inventory analytics and summaries</p>
@@ -417,8 +466,157 @@
             </button>
           </div>
         </div>
+
+        <!-- Date & Month Pickers -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+          <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-amber-500">today</span>
+            <div class="flex flex-col gap-0.5 flex-1">
+              <label for="report-date-picker" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Date</label>
+              <input id="report-date-picker" type="date" onchange="renderReports()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full"/>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-primary">date_range</span>
+            <div class="flex flex-col gap-0.5 flex-1">
+              <label for="report-month-picker" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Month</label>
+              <input id="report-month-picker" type="month" onchange="renderReports()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full"/>
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="reports-content">
           <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- ===== ADMIN DASHBOARD PAGE ===== -->
+      <div id="page-admin" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Admin Dashboard</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">All branches overview — Head Office</p>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded-full text-xs font-bold uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">shield</span>
+            Admin
+          </div>
+        </div>
+
+        <!-- Aggregate KPIs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-blue-100 dark:bg-blue-900/30 text-primary rounded-lg">
+                <span class="material-symbols-outlined">inventory</span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">All Branches</span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock Entries</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-total-entries">--</h3>
+          </div>
+
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border-2 border-red-500/20 dark:border-red-500/30 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
+                <span class="material-symbols-outlined">warning</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Branches</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-branches">--</h3>
+          </div>
+
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                <span class="material-symbols-outlined">login</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock In</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-stock-in">--</h3>
+          </div>
+
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg">
+                <span class="material-symbols-outlined">logout</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock Out</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-stock-out">--</h3>
+          </div>
+        </div>
+
+        <!-- Branch-wise Breakdown Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-8">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Branch-wise Breakdown</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Stock summary per branch location</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Branch</th>
+                  <th class="px-6 py-4 font-semibold">Total Entries</th>
+                  <th class="px-6 py-4 font-semibold">Stock In Qty</th>
+                  <th class="px-6 py-4 font-semibold">Stock Out Qty</th>
+                  <th class="px-6 py-4 font-semibold">Employees</th>
+                </tr>
+              </thead>
+              <tbody id="admin-branch-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Two columns: Recent Activity + All Employees -->
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+
+          <!-- Recent Activity from All Branches -->
+          <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+              <h4 class="text-lg font-bold text-slate-800 dark:text-white">Recent Activity</h4>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Last 10 transactions across all branches</p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                  <tr>
+                    <th class="px-6 py-3 font-semibold">Item</th>
+                    <th class="px-6 py-3 font-semibold">Type</th>
+                    <th class="px-6 py-3 font-semibold">Qty</th>
+                    <th class="px-6 py-3 font-semibold">Branch</th>
+                    <th class="px-6 py-3 font-semibold">User</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-recent-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                  <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- All Employees Grid -->
+          <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 class="text-lg font-bold text-slate-800 dark:text-white">All Employees</h4>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Staff across all branches</p>
+              </div>
+              <div>
+                <select id="admin-emp-filter" onchange="filterAdminEmployees()" class="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-primary focus:border-transparent">
+                  <option value="all">All Branches</option>
+                </select>
+              </div>
+            </div>
+            <div id="admin-employees-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800 max-h-96 overflow-y-auto">
+              <div class="col-span-full bg-white dark:bg-[#1c2631] p-6 text-center text-slate-400 text-sm">Loading...</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -529,6 +727,44 @@
 <!-- Team Member Modal -->
 <div id="team-modal-overlay" onclick="closeTeamModal()" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
   <!-- Content injected by JS -->
+</div>
+
+<!-- Transaction Edit Modal -->
+<div id="txn-edit-modal-overlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md">
+    <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-slate-800 dark:text-white">Edit Transaction</h3>
+      <button onclick="closeTxnEditModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <form id="txn-edit-form" onsubmit="saveTxnEdit(event)" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Item Name</label>
+        <input id="txn-edit-item" type="text" readonly class="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Entry Type</label>
+        <select id="txn-edit-type" class="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+          <option value="in">Stock In</option>
+          <option value="out">Stock Out</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Quantity</label>
+        <input id="txn-edit-qty" type="number" min="1" required class="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent"/>
+      </div>
+      <input type="hidden" id="txn-edit-id" value=""/>
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="flex-1 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+          Save Changes
+        </button>
+        <button type="button" onclick="closeTxnEditModal()" class="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Notification Panel -->

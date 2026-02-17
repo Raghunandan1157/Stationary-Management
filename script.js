@@ -38,10 +38,29 @@ async function supabaseInsert(table, rows) {
   return true;
 }
 
+async function supabaseUpdate(table, id, data) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': 'Bearer ' + SUPABASE_ANON,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Update error: ${res.status} ${errText}`);
+  }
+  return true;
+}
+
 // --- SESSION ---
 
 let currentEmployee = null;  // { id, emp_id, name, role, mobile, location }
 let selectedLocation = null;
+let isHeadOffice = false;
 
 // --- LOGIN FLOW ---
 
@@ -56,6 +75,9 @@ async function initLogin() {
     const data = await supabaseFetch('employees', 'select=location&location=not.is.null');
 
     const locations = [...new Set(data.map(e => e.location).filter(Boolean))].sort();
+    // Always include Head Office as an option
+    if (!locations.includes('Head Office')) locations.push('Head Office');
+    locations.sort();
 
     if (!select) return;
 
@@ -89,6 +111,16 @@ async function loginSelectLocation() {
 
   errorEl.classList.add('hidden');
   selectedLocation = location;
+
+  // Head Office → skip profile selection, show OTP step
+  if (location === 'Head Office') {
+    document.getElementById('login-step1').classList.add('hidden');
+    document.getElementById('login-step3').classList.remove('hidden');
+    document.getElementById('login-ho-otp').value = '';
+    document.getElementById('login-otp-error').classList.add('hidden');
+    showToast('OTP sent to your registered number');
+    return;
+  }
 
   try {
     // Fetch employees at this location with role = 'BOE' via REST
@@ -153,6 +185,49 @@ function loginBack() {
   currentEmployee = null;
 }
 
+function loginBackFromOTP() {
+  document.getElementById('login-step3').classList.add('hidden');
+  document.getElementById('login-step1').classList.remove('hidden');
+  selectedLocation = null;
+}
+
+function loginHeadOfficeOTP() {
+  const otpInput = document.getElementById('login-ho-otp');
+  const errorEl = document.getElementById('login-otp-error');
+  const otp = otpInput ? otpInput.value.trim() : '';
+
+  if (otp !== '5678') {
+    errorEl.textContent = 'Invalid OTP';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  isHeadOffice = true;
+  selectedLocation = 'Head Office';
+  currentEmployee = { id: 0, emp_id: 'HO-ADMIN', name: 'Head Office Admin', role: 'Admin', mobile: '', location: 'Head Office' };
+
+  // Save session
+  sessionStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
+  sessionStorage.setItem('sr_location', selectedLocation);
+  sessionStorage.setItem('sr_headoffice', 'true');
+  localStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
+  localStorage.setItem('sr_location', selectedLocation);
+  localStorage.setItem('sr_headoffice', 'true');
+
+  // Hide login, show app
+  document.getElementById('login-screen').classList.add('hidden');
+
+  // Switch to admin sidebar
+  switchToAdminMode();
+
+  // Update UI
+  updateUserUI();
+
+  // Load and render admin dashboard
+  loadAdminData().then(() => navigateTo('admin'));
+}
+
 function loginConfirm() {
   const locErr = document.getElementById('login-loc-error');
 
@@ -201,15 +276,19 @@ function checkSession() {
   // Check sessionStorage first (current tab), then localStorage (persistent across tabs/sessions)
   const savedEmp = sessionStorage.getItem('sr_employee') || localStorage.getItem('sr_employee');
   const savedLoc = sessionStorage.getItem('sr_location') || localStorage.getItem('sr_location');
+  const savedHO = sessionStorage.getItem('sr_headoffice') || localStorage.getItem('sr_headoffice');
 
   if (savedEmp && savedLoc) {
     currentEmployee = JSON.parse(savedEmp);
     selectedLocation = savedLoc;
+    isHeadOffice = savedHO === 'true';
     // Keep both in sync
     sessionStorage.setItem('sr_employee', savedEmp);
     sessionStorage.setItem('sr_location', savedLoc);
+    if (isHeadOffice) sessionStorage.setItem('sr_headoffice', 'true');
     document.getElementById('login-screen').classList.add('hidden');
     updateUserUI();
+    if (isHeadOffice) switchToAdminMode();
     return true;
   }
   return false;
@@ -218,19 +297,56 @@ function checkSession() {
 function logout() {
   sessionStorage.removeItem('sr_employee');
   sessionStorage.removeItem('sr_location');
+  sessionStorage.removeItem('sr_headoffice');
   localStorage.removeItem('sr_employee');
   localStorage.removeItem('sr_location');
+  localStorage.removeItem('sr_headoffice');
   currentEmployee = null;
   selectedLocation = null;
+  isHeadOffice = false;
+
+  // Reset to regular nav
+  switchToRegularMode();
+
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-step1').classList.remove('hidden');
   document.getElementById('login-step2').classList.add('hidden');
+  document.getElementById('login-step3').classList.add('hidden');
   initLogin(); // reload locations
+}
+
+// --- ADMIN MODE SWITCHING ---
+
+function switchToAdminMode() {
+  document.getElementById('nav-regular').classList.add('hidden');
+  document.getElementById('nav-regular').classList.remove('flex-1');
+  document.getElementById('nav-admin').classList.remove('hidden');
+  document.getElementById('nav-admin').classList.add('flex-1');
+  // Hide team section and regular profile for admin
+  const teamSection = document.querySelector('#sidebar > .px-4.pb-3');
+  if (teamSection) teamSection.classList.add('hidden');
+}
+
+function switchToRegularMode() {
+  document.getElementById('nav-admin').classList.add('hidden');
+  document.getElementById('nav-admin').classList.remove('flex-1');
+  document.getElementById('nav-regular').classList.remove('hidden');
+  document.getElementById('nav-regular').classList.add('flex-1');
+  const teamSection = document.querySelector('#sidebar > .px-4.pb-3');
+  if (teamSection) teamSection.classList.remove('hidden');
 }
 
 // Initialize login on load
 document.addEventListener('DOMContentLoaded', () => {
   initLogin();
+
+  // Admin nav link click handlers
+  document.querySelectorAll('.nav-link-admin').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      navigateTo(link.dataset.page);
+    });
+  });
 });
 
 // --- DATA LAYER ---
@@ -372,6 +488,147 @@ async function loadFromSupabase() {
   }
 }
 
+// --- ADMIN DATA ---
+
+let adminData = { entries: [], employees: [] };
+
+async function loadAdminData() {
+  try {
+    const [entries, employees] = await Promise.all([
+      supabaseFetch('stock_entries', 'select=*&order=created_at.desc'),
+      supabaseFetch('employees', 'select=*&order=name.asc'),
+    ]);
+    adminData.entries = entries || [];
+    adminData.employees = employees || [];
+  } catch (err) {
+    console.error('Failed to load admin data:', err);
+    showToast('Failed to load admin data', 'delete');
+  }
+}
+
+function renderAdminDashboard() {
+  const entries = adminData.entries;
+  const employees = adminData.employees;
+
+  // Compute aggregates
+  const totalEntries = entries.length;
+  const stockInQty = entries.filter(e => e.entry_type === 'in').reduce((s, e) => s + e.quantity, 0);
+  const stockOutQty = entries.filter(e => e.entry_type === 'out').reduce((s, e) => s + e.quantity, 0);
+
+  // Get unique branches from entries + employees
+  const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
+  const branchesFromEmployees = employees.map(e => e.location).filter(Boolean);
+  const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
+
+  // KPIs
+  document.getElementById('admin-kpi-total-entries').textContent = totalEntries.toLocaleString();
+  document.getElementById('admin-kpi-branches').textContent = allBranches.length;
+  document.getElementById('admin-kpi-stock-in').textContent = stockInQty.toLocaleString() + ' Units';
+  document.getElementById('admin-kpi-stock-out').textContent = stockOutQty.toLocaleString() + ' Units';
+
+  // Branch-wise breakdown
+  const branchTable = document.getElementById('admin-branch-table');
+  if (allBranches.length === 0) {
+    branchTable.innerHTML = '<tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">No branch data found</td></tr>';
+  } else {
+    branchTable.innerHTML = allBranches.map(branch => {
+      const branchEntries = entries.filter(e => e.location === branch);
+      const branchIn = branchEntries.filter(e => e.entry_type === 'in').reduce((s, e) => s + e.quantity, 0);
+      const branchOut = branchEntries.filter(e => e.entry_type === 'out').reduce((s, e) => s + e.quantity, 0);
+      const branchEmps = employees.filter(e => e.location === branch).length;
+      return `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-3">
+              <div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <span class="material-symbols-outlined text-primary text-sm">location_on</span>
+              </div>
+              <span class="font-semibold text-slate-800 dark:text-white">${escHtml(branch)}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${branchEntries.length}</td>
+          <td class="px-6 py-4 text-green-600 dark:text-green-400 font-semibold">+${branchIn.toLocaleString()}</td>
+          <td class="px-6 py-4 text-red-500 font-semibold">-${branchOut.toLocaleString()}</td>
+          <td class="px-6 py-4 text-slate-600 dark:text-slate-400">${branchEmps}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Recent activity (last 10)
+  const recent = entries.slice(0, 10);
+  const recentTable = document.getElementById('admin-recent-table');
+  if (recent.length === 0) {
+    recentTable.innerHTML = '<tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">No recent activity</td></tr>';
+  } else {
+    recentTable.innerHTML = recent.map(e => `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-3">
+          <span class="font-medium text-slate-800 dark:text-slate-200">${escHtml(e.item_name)}</span>
+        </td>
+        <td class="px-6 py-3">
+          ${e.entry_type === 'in'
+            ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+            : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>'
+          }
+        </td>
+        <td class="px-6 py-3 font-semibold text-slate-700 dark:text-slate-300">${e.entry_type === 'in' ? '+' : '-'}${e.quantity}</td>
+        <td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">${escHtml(e.location || '--')}</td>
+        <td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">${escHtml(e.emp_name || '--')}</td>
+      </tr>
+    `).join('');
+  }
+
+  // All employees grid with branch filter
+  const empFilter = document.getElementById('admin-emp-filter');
+  if (empFilter) {
+    const currentVal = empFilter.value;
+    empFilter.innerHTML = '<option value="all">All Branches</option>' +
+      allBranches.map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('');
+    empFilter.value = currentVal && allBranches.includes(currentVal) ? currentVal : 'all';
+  }
+
+  renderAdminEmployees();
+}
+
+let _adminAllEmployees = null;
+
+function renderAdminEmployees() {
+  const filter = document.getElementById('admin-emp-filter');
+  const filterVal = filter ? filter.value : 'all';
+  const employees = filterVal === 'all'
+    ? adminData.employees.filter(e => e.location !== 'Head Office')
+    : adminData.employees.filter(e => e.location === filterVal);
+
+  _adminAllEmployees = employees;
+
+  const grid = document.getElementById('admin-employees-grid');
+  const TEAM_COLORS = ['from-primary to-blue-400','from-emerald-500 to-teal-400','from-violet-500 to-purple-400','from-amber-500 to-orange-400','from-rose-500 to-pink-400','from-cyan-500 to-sky-400'];
+
+  if (employees.length === 0) {
+    grid.innerHTML = '<div class="col-span-full bg-white dark:bg-[#1c2631] p-6 text-center text-slate-400 text-sm">No employees found</div>';
+    return;
+  }
+
+  grid.innerHTML = employees.map((m, i) => {
+    const initials = m.name ? m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
+    const color = TEAM_COLORS[i % TEAM_COLORS.length];
+    return `
+      <div class="bg-white dark:bg-[#1c2631] p-4 flex items-center gap-3">
+        <div class="size-10 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-xs flex-shrink-0">${initials}</div>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800 dark:text-white text-sm truncate">${escHtml(m.name)}</p>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400">${escHtml(m.role || '')} &middot; ${escHtml(m.location || '')}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterAdminEmployees() {
+  renderAdminEmployees();
+}
+
 // --- NEW ENTRY STATE ---
 
 let entryCart = {};       // maps itemId → selected quantity
@@ -392,11 +649,21 @@ function navigateTo(page) {
   const target = document.getElementById('page-' + page);
   if (target) target.classList.remove('hidden');
 
+  // Update regular nav highlighting
   document.querySelectorAll('.nav-link').forEach(link => {
     if (link.dataset.page === page) {
       link.className = 'nav-link flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold';
     } else {
       link.className = 'nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors';
+    }
+  });
+
+  // Update admin nav highlighting
+  document.querySelectorAll('.nav-link-admin').forEach(link => {
+    if (link.dataset.page === page) {
+      link.className = 'nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold';
+    } else {
+      link.className = 'nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors';
     }
   });
 
@@ -423,6 +690,7 @@ function renderPage(page) {
     case 'suppliers': renderSuppliers(); break;
     case 'reports': renderReports(); break;
     case 'newentry': renderNewEntryPage(); break;
+    case 'admin': renderAdminDashboard(); break;
   }
 }
 
@@ -483,6 +751,9 @@ function renderDashboard() {
       <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
+      <td class="px-6 py-4">
+        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+      </td>
     </tr>
   `).join('');
 
@@ -574,6 +845,9 @@ function renderTransactions() {
       <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
+      <td class="px-6 py-4">
+        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+      </td>
     </tr>
   `).join('');
 }
@@ -608,34 +882,51 @@ function renderReports() {
   const txns = appData.transactions;
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  // Today's transactions
-  const todayTxns = txns.filter(t => t.date.slice(0, 10) === todayStr);
-  const todayIn = todayTxns.filter(t => t.type === 'in');
-  const todayOut = todayTxns.filter(t => t.type === 'out');
-  const todayInQty = todayIn.reduce((s, t) => s + t.qty, 0);
-  const todayOutQty = todayOut.reduce((s, t) => s + t.qty, 0);
+  // --- Read picker values or default to today / current month ---
+  const datePicker = document.getElementById('report-date-picker');
+  const monthPicker = document.getElementById('report-month-picker');
 
-  // Month-to-date transactions
-  const mtdTxns = txns.filter(t => new Date(t.date) >= monthStart);
-  const mtdIn = mtdTxns.filter(t => t.type === 'in');
-  const mtdOut = mtdTxns.filter(t => t.type === 'out');
-  const mtdInQty = mtdIn.reduce((s, t) => s + t.qty, 0);
-  const mtdOutQty = mtdOut.reduce((s, t) => s + t.qty, 0);
+  // Default picker values on first render
+  if (datePicker && !datePicker.value) datePicker.value = now.toISOString().slice(0, 10);
+  if (monthPicker && !monthPicker.value) monthPicker.value = now.toISOString().slice(0, 7);
 
-  // Closing stock
+  const selectedDateStr = datePicker ? datePicker.value : now.toISOString().slice(0, 10);
+  const selectedMonthStr = monthPicker ? monthPicker.value : now.toISOString().slice(0, 7);
+
+  // Parse selected date
+  const selectedDate = new Date(selectedDateStr + 'T00:00:00');
+  const selectedDateFormatted = `${dayNames[selectedDate.getDay()]}, ${selectedDate.getDate()} ${monthNames[selectedDate.getMonth()].slice(0,3)} ${selectedDate.getFullYear()}`;
+
+  // Parse selected month
+  const [selYear, selMonth] = selectedMonthStr.split('-').map(Number);
+  const monthStart = new Date(selYear, selMonth - 1, 1);
+  const monthEnd = new Date(selYear, selMonth, 0, 23, 59, 59, 999); // last day of month
+  const selectedMonthName = monthNames[selMonth - 1];
+  const daysInMonth = monthEnd.getDate();
+
+  // --- Date report: transactions on selected date ---
+  const dateTxns = txns.filter(t => t.date.slice(0, 10) === selectedDateStr);
+  const dateIn = dateTxns.filter(t => t.type === 'in');
+  const dateOut = dateTxns.filter(t => t.type === 'out');
+  const dateInQty = dateIn.reduce((s, t) => s + t.qty, 0);
+  const dateOutQty = dateOut.reduce((s, t) => s + t.qty, 0);
+
+  // --- Month report: transactions in selected month ---
+  const monthTxns = txns.filter(t => {
+    const d = new Date(t.date);
+    return d >= monthStart && d <= monthEnd;
+  });
+  const monthIn = monthTxns.filter(t => t.type === 'in');
+  const monthOut = monthTxns.filter(t => t.type === 'out');
+  const monthInQty = monthIn.reduce((s, t) => s + t.qty, 0);
+  const monthOutQty = monthOut.reduce((s, t) => s + t.qty, 0);
+
+  // Closing stock (always current)
   const closingStock = inv.reduce((s, i) => s + i.qty, 0);
   const lowStockCount = inv.filter(i => i.qty <= i.reorder).length;
-
-  // Month name
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const currentMonth = monthNames[now.getMonth()];
-
-  // Format today
-  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const todayFormatted = `${dayNames[now.getDay()]}, ${now.getDate()} ${currentMonth.slice(0,3)} ${now.getFullYear()}`;
 
   function buildRow(label, value, accent) {
     const valClass = accent === 'green' ? 'text-green-500' : accent === 'red' ? 'text-red-500' : 'font-bold text-slate-800 dark:text-white';
@@ -661,7 +952,7 @@ function renderReports() {
 
   let html = '';
 
-  // --- Column 1: Today's Report ---
+  // --- Column 1: Date Report ---
   html += `
     <div id="report-today" class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div class="p-6 border-b border-slate-200 dark:border-slate-800">
@@ -670,29 +961,29 @@ function renderReports() {
             <span class="material-symbols-outlined">today</span>
           </span>
           <div>
-            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Today's Report</h4>
-            <p class="text-xs text-slate-500 dark:text-slate-400">${todayFormatted}</p>
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Daily Report</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400">${selectedDateFormatted}</p>
           </div>
         </div>
       </div>
       <div class="p-6 space-y-0">
-        ${buildRow('Total Transactions', todayTxns.length)}
-        ${buildRow('Stock In (entries)', todayIn.length)}
-        ${buildRow('Stock In (qty)', '+' + todayInQty.toLocaleString() + ' units', 'green')}
-        ${buildRow('Stock Out (entries)', todayOut.length)}
-        ${buildRow('Stock Out (qty)', '-' + todayOutQty.toLocaleString() + ' units', 'red')}
-        ${buildRow('Net Movement', (todayInQty - todayOutQty >= 0 ? '+' : '') + (todayInQty - todayOutQty).toLocaleString() + ' units')}
+        ${buildRow('Total Transactions', dateTxns.length)}
+        ${buildRow('Stock In (entries)', dateIn.length)}
+        ${buildRow('Stock In (qty)', '+' + dateInQty.toLocaleString() + ' units', 'green')}
+        ${buildRow('Stock Out (entries)', dateOut.length)}
+        ${buildRow('Stock Out (qty)', '-' + dateOutQty.toLocaleString() + ' units', 'red')}
+        ${buildRow('Net Movement', (dateInQty - dateOutQty >= 0 ? '+' : '') + (dateInQty - dateOutQty).toLocaleString() + ' units')}
       </div>
       <div class="px-6 pb-2">
-        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Today's Activity</p>
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Activity</p>
       </div>
       <div class="px-6 pb-6 max-h-48 overflow-y-auto">
-        ${buildTxnList(todayTxns)}
+        ${buildTxnList(dateTxns)}
       </div>
     </div>
   `;
 
-  // --- Column 2: Month-to-Date Report ---
+  // --- Column 2: Monthly Report ---
   html += `
     <div id="report-mtd" class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div class="p-6 border-b border-slate-200 dark:border-slate-800">
@@ -701,26 +992,26 @@ function renderReports() {
             <span class="material-symbols-outlined">date_range</span>
           </span>
           <div>
-            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Month to Date</h4>
-            <p class="text-xs text-slate-500 dark:text-slate-400">1 ${currentMonth.slice(0,3)} – ${now.getDate()} ${currentMonth.slice(0,3)} ${now.getFullYear()}</p>
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Monthly Report</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400">1 – ${daysInMonth} ${selectedMonthName.slice(0,3)} ${selYear}</p>
           </div>
         </div>
       </div>
       <div class="p-6 space-y-0">
-        ${buildRow('Total Transactions', mtdTxns.length)}
-        ${buildRow('Stock In (entries)', mtdIn.length)}
-        ${buildRow('Stock In (qty)', '+' + mtdInQty.toLocaleString() + ' units', 'green')}
-        ${buildRow('Stock Out (entries)', mtdOut.length)}
-        ${buildRow('Stock Out (qty)', '-' + mtdOutQty.toLocaleString() + ' units', 'red')}
-        ${buildRow('Net Movement', (mtdInQty - mtdOutQty >= 0 ? '+' : '') + (mtdInQty - mtdOutQty).toLocaleString() + ' units')}
+        ${buildRow('Total Transactions', monthTxns.length)}
+        ${buildRow('Stock In (entries)', monthIn.length)}
+        ${buildRow('Stock In (qty)', '+' + monthInQty.toLocaleString() + ' units', 'green')}
+        ${buildRow('Stock Out (entries)', monthOut.length)}
+        ${buildRow('Stock Out (qty)', '-' + monthOutQty.toLocaleString() + ' units', 'red')}
+        ${buildRow('Net Movement', (monthInQty - monthOutQty >= 0 ? '+' : '') + (monthInQty - monthOutQty).toLocaleString() + ' units')}
         ${buildRow('Closing Stock', closingStock.toLocaleString() + ' units')}
         ${buildRow('Low Stock Items', lowStockCount, lowStockCount > 0 ? 'red' : '')}
       </div>
       <div class="px-6 pb-2">
-        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">MTD Activity</p>
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Monthly Activity</p>
       </div>
       <div class="px-6 pb-6 max-h-48 overflow-y-auto">
-        ${buildTxnList(mtdTxns)}
+        ${buildTxnList(monthTxns)}
       </div>
     </div>
   `;
@@ -784,6 +1075,9 @@ function renderFilteredTransactions(txns) {
       <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
+      <td class="px-6 py-4">
+        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+      </td>
     </tr>
   `).join('');
 }
@@ -853,6 +1147,59 @@ function deleteItem(id) {
   saveData(appData);
   showToast('Item deleted', 'delete');
   renderPage(currentPage);
+}
+
+// --- TRANSACTION EDIT MODAL ---
+
+function openTxnEditModal(txnId) {
+  const txn = appData.transactions.find(t => t.id === txnId);
+  if (!txn) return;
+
+  const overlay = document.getElementById('txn-edit-modal-overlay');
+  if (!overlay) return;
+
+  document.getElementById('txn-edit-id').value = txn.id;
+  document.getElementById('txn-edit-item').value = txn.itemName;
+  document.getElementById('txn-edit-type').value = txn.type;
+  document.getElementById('txn-edit-qty').value = txn.qty;
+
+  overlay.classList.remove('hidden');
+}
+
+function closeTxnEditModal() {
+  const overlay = document.getElementById('txn-edit-modal-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+async function saveTxnEdit(e) {
+  e.preventDefault();
+
+  const id = parseInt(document.getElementById('txn-edit-id').value, 10);
+  const newType = document.getElementById('txn-edit-type').value;
+  const newQty = parseInt(document.getElementById('txn-edit-qty').value, 10);
+
+  if (!newQty || newQty <= 0) {
+    showToast('Quantity must be greater than 0', 'delete');
+    return;
+  }
+
+  try {
+    await supabaseUpdate('stock_entries', id, {
+      entry_type: newType,
+      quantity: newQty,
+    });
+
+    showToast('Transaction updated successfully');
+    closeTxnEditModal();
+
+    // Reload from Supabase and re-render
+    await loadFromSupabase();
+    saveData(appData);
+    renderPage(currentPage);
+  } catch (err) {
+    console.error('Failed to update transaction:', err);
+    showToast('Failed to update transaction', 'delete');
+  }
 }
 
 // --- HEADER BUTTONS ---
@@ -1070,14 +1417,25 @@ function exportInventoryToExcel() {
 function exportReportsToExcel() {
   const txns = appData.transactions;
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const todayTxns = txns.filter(t => t.date.slice(0, 10) === todayStr);
-  const mtdTxns = txns.filter(t => new Date(t.date) >= monthStart);
+  // Read selected date/month from pickers
+  const datePicker = document.getElementById('report-date-picker');
+  const monthPicker = document.getElementById('report-month-picker');
+  const selectedDateStr = datePicker && datePicker.value ? datePicker.value : now.toISOString().slice(0, 10);
+  const selectedMonthStr = monthPicker && monthPicker.value ? monthPicker.value : now.toISOString().slice(0, 7);
 
-  // Sheet 1: Today's transactions
-  const todayRows = todayTxns.map(t => ({
+  const [selYear, selMonth] = selectedMonthStr.split('-').map(Number);
+  const monthStart = new Date(selYear, selMonth - 1, 1);
+  const monthEnd = new Date(selYear, selMonth, 0, 23, 59, 59, 999);
+
+  const dateTxns = txns.filter(t => t.date.slice(0, 10) === selectedDateStr);
+  const monthTxns = txns.filter(t => {
+    const d = new Date(t.date);
+    return d >= monthStart && d <= monthEnd;
+  });
+
+  // Sheet 1: Selected date transactions
+  const dateRows = dateTxns.map(t => ({
     'Item': t.itemName,
     'HSN Code': t.sku,
     'Type': t.type === 'in' ? 'Stock In' : 'Stock Out',
@@ -1086,8 +1444,8 @@ function exportReportsToExcel() {
     'User': t.user,
   }));
 
-  // Sheet 2: MTD transactions
-  const mtdRows = mtdTxns.map(t => ({
+  // Sheet 2: Selected month transactions
+  const monthRows = monthTxns.map(t => ({
     'Item': t.itemName,
     'HSN Code': t.sku,
     'Type': t.type === 'in' ? 'Stock In' : 'Stock Out',
@@ -1097,22 +1455,24 @@ function exportReportsToExcel() {
   }));
 
   // Sheet 3: Summary
-  const todayIn = todayTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
-  const todayOut = todayTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
-  const mtdIn = mtdTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
-  const mtdOut = mtdTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+  const dateInQty = dateTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const dateOutQty = dateTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+  const monthInQty = monthTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const monthOutQty = monthTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
   const closingStock = appData.inventory.reduce((s, i) => s + i.qty, 0);
   const lowStock = appData.inventory.filter(i => i.qty <= i.reorder).length;
 
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
   const summaryRows = [
-    { 'Metric': 'Today - Total Transactions', 'Value': todayTxns.length },
-    { 'Metric': 'Today - Stock In (qty)', 'Value': todayIn },
-    { 'Metric': 'Today - Stock Out (qty)', 'Value': todayOut },
-    { 'Metric': 'Today - Net Movement', 'Value': todayIn - todayOut },
-    { 'Metric': 'MTD - Total Transactions', 'Value': mtdTxns.length },
-    { 'Metric': 'MTD - Stock In (qty)', 'Value': mtdIn },
-    { 'Metric': 'MTD - Stock Out (qty)', 'Value': mtdOut },
-    { 'Metric': 'MTD - Net Movement', 'Value': mtdIn - mtdOut },
+    { 'Metric': `Date (${selectedDateStr}) - Total Transactions`, 'Value': dateTxns.length },
+    { 'Metric': `Date (${selectedDateStr}) - Stock In (qty)`, 'Value': dateInQty },
+    { 'Metric': `Date (${selectedDateStr}) - Stock Out (qty)`, 'Value': dateOutQty },
+    { 'Metric': `Date (${selectedDateStr}) - Net Movement`, 'Value': dateInQty - dateOutQty },
+    { 'Metric': `${monthNames[selMonth - 1]} ${selYear} - Total Transactions`, 'Value': monthTxns.length },
+    { 'Metric': `${monthNames[selMonth - 1]} ${selYear} - Stock In (qty)`, 'Value': monthInQty },
+    { 'Metric': `${monthNames[selMonth - 1]} ${selYear} - Stock Out (qty)`, 'Value': monthOutQty },
+    { 'Metric': `${monthNames[selMonth - 1]} ${selYear} - Net Movement`, 'Value': monthInQty - monthOutQty },
     { 'Metric': 'Closing Stock', 'Value': closingStock },
     { 'Metric': 'Low Stock Items', 'Value': lowStock },
   ];
@@ -1121,18 +1481,18 @@ function exportReportsToExcel() {
   const colWidths = [{ wch: 28 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
 
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-  wsSummary['!cols'] = [{ wch: 30 }, { wch: 14 }];
+  wsSummary['!cols'] = [{ wch: 40 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
-  const wsToday = XLSX.utils.json_to_sheet(todayRows.length ? todayRows : [{ 'Item': 'No transactions today' }]);
-  wsToday['!cols'] = colWidths;
-  XLSX.utils.book_append_sheet(wb, wsToday, 'Today');
+  const wsDate = XLSX.utils.json_to_sheet(dateRows.length ? dateRows : [{ 'Item': 'No transactions on ' + selectedDateStr }]);
+  wsDate['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, wsDate, 'Daily (' + selectedDateStr + ')');
 
-  const wsMtd = XLSX.utils.json_to_sheet(mtdRows.length ? mtdRows : [{ 'Item': 'No transactions this month' }]);
-  wsMtd['!cols'] = colWidths;
-  XLSX.utils.book_append_sheet(wb, wsMtd, 'Month to Date');
+  const wsMonth = XLSX.utils.json_to_sheet(monthRows.length ? monthRows : [{ 'Item': 'No transactions in ' + selectedMonthStr }]);
+  wsMonth['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, wsMonth, monthNames[selMonth - 1] + ' ' + selYear);
 
-  XLSX.writeFile(wb, 'Reports_' + todayStr + '.xlsx');
+  XLSX.writeFile(wb, 'Reports_' + selectedDateStr + '.xlsx');
   showToast('Reports Excel downloaded');
 }
 
@@ -1503,10 +1863,15 @@ async function confirmEntry() {
 
 // Check if already logged in
 if (checkSession()) {
-  // Always load fresh data from Supabase, then render
-  loadFromSupabase().then(() => {
-    saveData(appData);
-    renderDashboard();
-  });
+  if (isHeadOffice) {
+    // Admin mode: load all-branch data and render admin dashboard
+    loadAdminData().then(() => navigateTo('admin'));
+  } else {
+    // Regular mode: load branch data from Supabase, then render
+    loadFromSupabase().then(() => {
+      saveData(appData);
+      renderDashboard();
+    });
+  }
 }
 // Otherwise login screen is shown, renderDashboard called after loginConfirm()
