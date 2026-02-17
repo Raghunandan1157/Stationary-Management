@@ -250,6 +250,11 @@ function loginConfirm() {
   appData.profile.boe = 'Navachetana Livelihoods Pvt Ltd';
   saveData(appData);
 
+  // Show loading state on login button
+  const loginBtn = document.getElementById('login-confirm-btn');
+  loginBtn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span> Loading...';
+  loginBtn.disabled = true;
+
   // Hide login, show app
   document.getElementById('login-screen').classList.add('hidden');
 
@@ -325,6 +330,7 @@ function switchToAdminMode() {
   // Hide team section and regular profile for admin
   const teamSection = document.querySelector('#sidebar > .px-4.pb-3');
   if (teamSection) teamSection.classList.add('hidden');
+  document.getElementById('new-entry-btn').classList.add('hidden');
 }
 
 function switchToRegularMode() {
@@ -334,6 +340,7 @@ function switchToRegularMode() {
   document.getElementById('nav-regular').classList.add('flex-1');
   const teamSection = document.querySelector('#sidebar > .px-4.pb-3');
   if (teamSection) teamSection.classList.remove('hidden');
+  document.getElementById('new-entry-btn').classList.remove('hidden');
 }
 
 // Initialize login on load
@@ -347,6 +354,10 @@ document.addEventListener('DOMContentLoaded', () => {
       navigateTo(link.dataset.page);
     });
   });
+
+  // OTP Enter key support
+  const otpInput = document.getElementById('login-ho-otp');
+  if (otpInput) otpInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loginHeadOfficeOTP(); } });
 });
 
 // --- DATA LAYER ---
@@ -706,6 +717,44 @@ function renderDashboard() {
   document.getElementById('kpi-stock-in').textContent = monthIn.toLocaleString() + ' Units';
   document.getElementById('kpi-stock-out').textContent = monthOut.toLocaleString() + ' Units';
 
+  // Dynamic KPI percentage badges
+  const now = new Date();
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  const prevTxns = appData.transactions.filter(t => {
+    const d = new Date(t.date);
+    return d >= prevMonthStart && d <= prevMonthEnd;
+  });
+  const prevIn = prevTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const prevOut = prevTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+
+  function setBadge(id, current, previous) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (previous === 0 && current === 0) { el.classList.add('hidden'); return; }
+    if (previous === 0) { el.textContent = 'New'; el.className = 'text-xs font-semibold px-2 py-1 rounded text-blue-500 bg-blue-500/10'; el.classList.remove('hidden'); return; }
+    const pct = ((current - previous) / previous * 100).toFixed(1);
+    const isUp = current >= previous;
+    el.textContent = (isUp ? '+' : '') + pct + '%';
+    el.className = 'text-xs font-semibold px-2 py-1 rounded ' + (isUp ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10');
+    el.classList.remove('hidden');
+  }
+
+  setBadge('kpi-badge-in', monthIn, prevIn);
+  setBadge('kpi-badge-out', monthOut, prevOut);
+
+  // Low stock badge: show Critical if any low stock items, else hide
+  const lowBadge = document.getElementById('kpi-badge-low');
+  if (lowBadge) {
+    if (lowStock > 0) {
+      lowBadge.textContent = 'Critical';
+      lowBadge.className = 'text-[10px] uppercase font-bold text-white bg-red-600 px-2 py-0.5 rounded-full animate-pulse';
+      lowBadge.classList.remove('hidden');
+    } else {
+      lowBadge.classList.add('hidden');
+    }
+  }
+
   // Profile
   document.getElementById('profile-branch').textContent = appData.profile.branch;
   document.getElementById('profile-boe').textContent = appData.profile.boe;
@@ -734,28 +783,35 @@ function renderDashboard() {
 
   // Recent movements (last 5)
   const recent = [...appData.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
-  document.getElementById('movements-table').innerHTML = recent.map(t => `
-    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-      <td class="px-6 py-4">
-        <div class="flex flex-col">
-          <span class="font-medium text-slate-800 dark:text-slate-200">${escHtml(t.itemName)}</span>
-          <span class="text-xs text-slate-400">${escHtml(t.sku)}</span>
-        </div>
-      </td>
-      <td class="px-6 py-4">
-        ${t.type === 'in'
-          ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
-          : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
-        }
-      </td>
-      <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
-      <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
-      <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
-      <td class="px-6 py-4">
-        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
-      </td>
-    </tr>
-  `).join('');
+  if (recent.length === 0) {
+    document.getElementById('movements-table').innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">swap_horiz</span><p class="text-sm font-medium">No recent movements</p></div></td></tr>`;
+  } else {
+    document.getElementById('movements-table').innerHTML = recent.map(t => `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-4">
+          <div class="flex flex-col">
+            <span class="font-medium text-slate-800 dark:text-slate-200">${escHtml(t.itemName)}</span>
+            <span class="text-xs text-slate-400">${escHtml(t.sku)}</span>
+          </div>
+        </td>
+        <td class="px-6 py-4">
+          ${t.type === 'in'
+            ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
+            : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
+          }
+        </td>
+        <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-1">
+            <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+            <button onclick="deleteTxn(${t.id})" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  }
 
   // Team grid — fetch real employees from same location via Supabase
   const teamGrid = document.getElementById('team-grid');
@@ -788,6 +844,8 @@ function renderDashboard() {
           const color = TEAM_COLORS[i % TEAM_COLORS.length];
           return `<div class="size-8 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-[10px] font-bold border-2 border-white dark:border-[#161e27]" title="${escHtml(m.name)}">${initials}</div>`;
         }).join('');
+        const teamCountLabel = document.getElementById('team-count-label');
+        if (teamCountLabel) teamCountLabel.textContent = 'Team (' + members.length + ')';
       }).catch(() => {
         teamGrid.innerHTML = '<div class="col-span-full p-6 text-center text-red-400 text-sm">Failed to load team</div>';
       });
@@ -799,6 +857,10 @@ function renderDashboard() {
 
 function renderInventory() {
   const items = appData.inventory;
+  if (items.length === 0) {
+    document.getElementById('inventory-table').innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">inventory_2</span><p class="text-sm font-medium">No inventory items yet</p></div></td></tr>`;
+    return;
+  }
   document.getElementById('inventory-table').innerHTML = items.map(item => {
     let status, statusClass;
     if (item.qty <= 0) {
@@ -828,6 +890,10 @@ function renderInventory() {
 
 function renderTransactions() {
   const txns = [...appData.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (txns.length === 0) {
+    document.getElementById('transactions-table').innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">swap_horiz</span><p class="text-sm font-medium">No transactions yet</p></div></td></tr>`;
+    return;
+  }
   document.getElementById('transactions-table').innerHTML = txns.map(t => `
     <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
       <td class="px-6 py-4">
@@ -846,13 +912,24 @@ function renderTransactions() {
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
       <td class="px-6 py-4">
-        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+        <div class="flex items-center gap-1">
+          <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+          <button onclick="deleteTxn(${t.id})" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+        </div>
       </td>
     </tr>
   `).join('');
 }
 
 function renderSuppliers() {
+  if (appData.suppliers.length === 0) {
+    document.getElementById('suppliers-grid').innerHTML = `
+      <div class="col-span-full flex flex-col items-center justify-center py-16 text-slate-400 dark:text-slate-500">
+        <span class="material-symbols-outlined text-5xl mb-3">local_shipping</span>
+        <p class="text-sm font-medium">No suppliers added yet</p>
+      </div>`;
+    return;
+  }
   document.getElementById('suppliers-grid').innerHTML = appData.suppliers.map(s => `
     <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
       <div class="flex items-center justify-between mb-4">
@@ -1076,7 +1153,10 @@ function renderFilteredTransactions(txns) {
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(t.user)}</td>
       <td class="px-6 py-4">
-        <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+        <div class="flex items-center gap-1">
+          <button onclick="openTxnEditModal(${t.id})" class="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+          <button onclick="deleteTxn(${t.id})" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+        </div>
       </td>
     </tr>
   `).join('');
@@ -1147,6 +1227,29 @@ function deleteItem(id) {
   saveData(appData);
   showToast('Item deleted', 'delete');
   renderPage(currentPage);
+}
+
+// --- DELETE TRANSACTION ---
+
+async function deleteTxn(txnId) {
+  if (!confirm('Delete this transaction?')) return;
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/stock_entries?id=eq.' + txnId, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + SUPABASE_ANON,
+      },
+    });
+    if (!res.ok) throw new Error('Delete failed: ' + res.status);
+    showToast('Transaction deleted', 'delete');
+    await loadFromSupabase();
+    saveData(appData);
+    renderPage(currentPage);
+  } catch (err) {
+    console.error('Failed to delete transaction:', err);
+    showToast('Failed to delete transaction', 'delete');
+  }
 }
 
 // --- TRANSACTION EDIT MODAL ---
@@ -1298,7 +1401,6 @@ function toggleTheme() {
   const html = document.documentElement;
   html.classList.toggle('dark');
   const isDark = html.classList.contains('dark');
-  document.getElementById('theme-icon').textContent = isDark ? 'dark_mode' : 'light_mode';
   const headerIcon = document.getElementById('header-theme-icon');
   if (headerIcon) headerIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
 }
@@ -1390,6 +1492,24 @@ function closeTeamModal() {
 }
 
 // --- EXPORT TO EXCEL ---
+
+function exportTransactionsToExcel() {
+  const txns = [...appData.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const rows = txns.map(t => ({
+    'Item': t.itemName,
+    'HSN Code': t.sku,
+    'Type': t.type === 'in' ? 'Stock In' : 'Stock Out',
+    'Quantity': t.qty,
+    'Date & Time': formatDate(t.date),
+    'User': t.user,
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Item': 'No transactions' }]);
+  ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+  XLSX.writeFile(wb, 'Transactions_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  showToast('Transactions Excel downloaded');
+}
 
 function exportInventoryToExcel() {
   const rows = appData.inventory.map(item => ({

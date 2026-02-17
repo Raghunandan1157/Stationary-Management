@@ -182,7 +182,7 @@
     <!-- Team Section -->
     <div class="px-4 pb-3">
       <div class="flex items-center justify-between mb-3 px-2">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Team (6)</span>
+        <span id="team-count-label" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Team</span>
       </div>
       <div class="flex items-center -space-x-2 px-2" id="team-avatars">
         <!-- Team avatars rendered by JS -->
@@ -246,7 +246,7 @@
               <span class="p-2 bg-blue-100 dark:bg-blue-900/30 text-primary rounded-lg">
                 <span class="material-symbols-outlined">inventory</span>
               </span>
-              <span class="text-xs font-semibold text-green-500 bg-green-500/10 px-2 py-1 rounded">+2.4%</span>
+              <span id="kpi-badge-stock" class="text-xs font-semibold px-2 py-1 rounded hidden"></span>
             </div>
             <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Closing Stock</p>
             <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="kpi-closing-stock">3,450 Units</h3>
@@ -258,7 +258,7 @@
               <span class="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
                 <span class="material-symbols-outlined">warning</span>
               </span>
-              <span class="text-[10px] uppercase font-bold text-white bg-red-600 px-2 py-0.5 rounded-full animate-pulse">Critical</span>
+              <span id="kpi-badge-low" class="text-xs font-semibold px-2 py-1 rounded hidden"></span>
             </div>
             <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Low Stock Items</p>
             <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="kpi-low-stock">12 Items</h3>
@@ -270,7 +270,7 @@
               <span class="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
                 <span class="material-symbols-outlined">login</span>
               </span>
-              <span class="text-xs font-semibold text-green-500 bg-green-500/10 px-2 py-1 rounded">+12%</span>
+              <span id="kpi-badge-in" class="text-xs font-semibold px-2 py-1 rounded hidden"></span>
             </div>
             <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Monthly Stock In</p>
             <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="kpi-stock-in">1,240 Units</h3>
@@ -282,7 +282,7 @@
               <span class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg">
                 <span class="material-symbols-outlined">logout</span>
               </span>
-              <span class="text-xs font-semibold text-red-500 bg-red-500/10 px-2 py-1 rounded">-5%</span>
+              <span id="kpi-badge-out" class="text-xs font-semibold px-2 py-1 rounded hidden"></span>
             </div>
             <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Monthly Stock Out</p>
             <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="kpi-stock-out">850 Units</h3>
@@ -413,6 +413,10 @@
             <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Transactions</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400">All stock in/out movements</p>
           </div>
+          <button onclick="exportTransactionsToExcel()" class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors">
+            <span class="material-symbols-outlined text-base">download</span>
+            Export Excel
+          </button>
         </div>
         <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
