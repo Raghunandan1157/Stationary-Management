@@ -502,21 +502,23 @@ async function loadFromSupabase() {
 
 // --- ADMIN DATA ---
 
-let adminData = { entries: [], employees: [], editLogs: [], deletionLogs: [] };
+let adminData = { entries: [], employees: [], editLogs: [], deletionLogs: [], receivedDateDeletions: [] };
 let selectedBranch = null;
 
 async function loadAdminData() {
   try {
-    const [entries, employees, editLogs, deletionLogs] = await Promise.all([
+    const [entries, employees, editLogs, deletionLogs, receivedDateDeletions] = await Promise.all([
       supabaseFetch('stock_entries', 'select=*&order=created_at.desc'),
       supabaseFetch('employees', 'select=*&order=name.asc'),
       supabaseFetch('edit_log', 'select=*&order=edited_at.desc'),
-      supabaseFetch('deletion_log', 'select=*&order=deleted_at.desc'),
+      supabaseFetch('deletion_log', 'select=*&order=deleted_at.desc').catch(() => []),
+      supabaseFetch('received_date_deletion_log', 'select=*&order=deleted_at.desc').catch(() => []),
     ]);
     adminData.entries = entries || [];
     adminData.employees = employees || [];
     adminData.editLogs = editLogs || [];
     adminData.deletionLogs = deletionLogs || [];
+    adminData.receivedDateDeletions = receivedDateDeletions || [];
   } catch (err) {
     console.error('Failed to load admin data:', err);
     showToast('Failed to load admin data', 'delete');
@@ -528,9 +530,20 @@ function renderAdminDashboard() {
   const employees = adminData.employees;
 
   // Compute aggregates
-  const totalEntries = entries.length;
   const stockInQty = entries.filter(e => e.entry_type === 'in').reduce((s, e) => s + e.quantity, 0);
   const stockOutQty = entries.filter(e => e.entry_type === 'out').reduce((s, e) => s + e.quantity, 0);
+
+  // Closing stock: compute per-item qty across all branches, then sum
+  const closingStock = DEFAULT_INVENTORY.reduce((total, item) => {
+    let qty = 0;
+    entries.forEach(e => {
+      if (e.item_name === item.name) {
+        if (e.entry_type === 'in') qty += e.quantity;
+        else qty = Math.max(0, qty - e.quantity);
+      }
+    });
+    return total + qty;
+  }, 0);
 
   // Get unique branches from entries + employees
   const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
@@ -538,7 +551,7 @@ function renderAdminDashboard() {
   const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
 
   // KPIs
-  document.getElementById('admin-kpi-total-entries').textContent = totalEntries.toLocaleString();
+  document.getElementById('admin-kpi-closing-stock').textContent = closingStock.toLocaleString() + ' Units';
   document.getElementById('admin-kpi-branches').textContent = allBranches.length;
   document.getElementById('admin-kpi-stock-in').textContent = stockInQty.toLocaleString() + ' Units';
   document.getElementById('admin-kpi-stock-out').textContent = stockOutQty.toLocaleString() + ' Units';
@@ -769,6 +782,222 @@ function renderBranchDetail() {
   }
 }
 
+// --- CLOSING STOCK PAGE (Admin) ---
+
+function computeBranchInventory(branch) {
+  const branchEntries = adminData.entries.filter(e => e.location === branch);
+  return DEFAULT_INVENTORY.map(item => {
+    let qty = 0;
+    branchEntries.forEach(e => {
+      if (e.item_name === item.name) {
+        if (e.entry_type === 'in') qty += e.quantity;
+        else qty = Math.max(0, qty - e.quantity);
+      }
+    });
+    return { ...item, qty };
+  });
+}
+
+function renderClosingStock() {
+  const entries = adminData.entries;
+  const employees = adminData.employees;
+
+  const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
+  const branchesFromEmployees = employees.map(e => e.location).filter(Boolean);
+  const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
+
+  const branchStocks = allBranches.map(branch => {
+    const inv = computeBranchInventory(branch);
+    const closingStock = inv.reduce((s, i) => s + i.qty, 0);
+    return { branch, closingStock };
+  });
+
+  const grandTotal = branchStocks.reduce((s, b) => s + b.closingStock, 0);
+
+  const table = document.getElementById('cs-branch-table');
+  if (branchStocks.length === 0) {
+    table.innerHTML = '<tr><td colspan="2" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">inventory</span><p class="text-sm font-medium">No branch data found</p></div></td></tr>';
+  } else {
+    table.innerHTML = branchStocks.map(b => `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <span class="material-symbols-outlined text-primary text-sm">location_on</span>
+            </div>
+            <span class="font-semibold text-slate-800 dark:text-white">${escHtml(b.branch)}</span>
+          </div>
+        </td>
+        <td class="px-6 py-4 text-right font-bold text-slate-700 dark:text-slate-300">${b.closingStock.toLocaleString()} <span class="text-xs font-normal text-slate-400">Units</span></td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('cs-grand-total').textContent = grandTotal.toLocaleString() + ' Units';
+}
+
+function exportClosingStockToExcel() {
+  const entries = adminData.entries;
+  const employees = adminData.employees;
+
+  const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
+  const branchesFromEmployees = employees.map(e => e.location).filter(Boolean);
+  const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
+
+  const wb = XLSX.utils.book_new();
+
+  allBranches.forEach(branch => {
+    const inv = computeBranchInventory(branch);
+    const itemsWithActivity = inv.filter(i => i.qty > 0 || adminData.entries.some(e => e.item_name === i.name && e.location === branch));
+
+    const rows = itemsWithActivity.map(item => ({
+      'Item Name': item.name,
+      'Category': item.category,
+      'Quantity': item.qty,
+      'Unit': item.unit || 'No',
+      'Reorder Level': item.reorder,
+      'Status': item.qty <= 0 ? 'Out of Stock' : item.qty <= item.reorder ? 'Low Stock' : 'In Stock',
+    }));
+
+    if (rows.length === 0) {
+      rows.push({ 'Item Name': 'No inventory data', 'Category': '', 'Quantity': '', 'Unit': '', 'Reorder Level': '', 'Status': '' });
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 14 }];
+    // Sheet names max 31 chars, no special chars
+    const sheetName = branch.length > 31 ? branch.slice(0, 31) : branch;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  if (allBranches.length === 0) {
+    const ws = XLSX.utils.json_to_sheet([{ 'Info': 'No branch data found' }]);
+    XLSX.utils.book_append_sheet(wb, ws, 'No Data');
+  }
+
+  XLSX.writeFile(wb, 'Closing_Stock_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  showToast('Closing stock Excel downloaded');
+}
+
+// --- STOCK RECEIVED DATE (Branch) ---
+
+async function renderReceivedDate() {
+  if (!selectedLocation) return;
+
+  const table = document.getElementById('received-date-table');
+  table.innerHTML = '<tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>';
+
+  // Default date picker to today
+  const dateInput = document.getElementById('rd-date-input');
+  if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+
+  try {
+    const logs = await supabaseFetch('received_date_log',
+      'select=*&location=eq.' + encodeURIComponent(selectedLocation) + '&order=created_at.desc');
+
+    if (!logs || logs.length === 0) {
+      table.innerHTML = '<tr><td colspan="5" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">event_available</span><p class="text-sm font-medium">No received dates logged yet</p><p class="text-xs mt-1">Use the form above to log when stock was received</p></div></td></tr>';
+      return;
+    }
+
+    table.innerHTML = logs.map(l => `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-sm">event_available</span>
+            <span class="font-semibold text-slate-800 dark:text-white">${escHtml(formatDateShort(l.received_date))}</span>
+          </div>
+        </td>
+        <td class="px-6 py-4 text-slate-600 dark:text-slate-400">${escHtml(l.note || '--')}</td>
+        <td class="px-6 py-4 text-slate-600 dark:text-slate-400">${escHtml(l.logged_by || '--')}</td>
+        <td class="px-6 py-4 text-xs text-slate-500 dark:text-slate-400">${formatDate(l.created_at)}</td>
+        <td class="px-6 py-4">
+          <button onclick="deleteReceivedDateLog(${l.id})" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+            <span class="material-symbols-outlined text-base">delete</span>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to load received date log:', err);
+    table.innerHTML = '<tr><td class="px-6 py-4 text-red-400 text-center" colspan="5">Failed to load data</td></tr>';
+  }
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '--';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function saveReceivedDateLog() {
+  const dateInput = document.getElementById('rd-date-input');
+  const noteInput = document.getElementById('rd-note-input');
+
+  if (!dateInput || !dateInput.value) {
+    showToast('Please select a date', 'delete');
+    return;
+  }
+
+  try {
+    await supabaseInsert('received_date_log', [{
+      location: selectedLocation,
+      received_date: dateInput.value,
+      note: noteInput ? noteInput.value.trim() || null : null,
+      logged_by: currentEmployee ? currentEmployee.name : 'Unknown',
+      created_at: new Date().toISOString(),
+    }]);
+
+    showToast('Received date logged');
+    dateInput.value = new Date().toISOString().slice(0, 10);
+    if (noteInput) noteInput.value = '';
+    renderReceivedDate();
+  } catch (err) {
+    console.error('Failed to save received date:', err);
+    showToast('Failed to save', 'delete');
+  }
+}
+
+async function deleteReceivedDateLog(id) {
+  if (!confirm('Delete this received date entry?')) return;
+
+  try {
+    // Fetch the entry first to log it
+    const entries = await supabaseFetch('received_date_log', 'select=*&id=eq.' + id);
+    const entry = entries && entries[0];
+
+    // Save to deletion log
+    if (entry) {
+      await supabaseInsert('received_date_deletion_log', [{
+        original_id: entry.id,
+        location: entry.location,
+        received_date: entry.received_date,
+        note: entry.note,
+        logged_by: entry.logged_by,
+        deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
+        deleted_at: new Date().toISOString(),
+      }]);
+    }
+
+    // Delete the entry
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/received_date_log?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + SUPABASE_ANON,
+        'Prefer': 'return=minimal',
+      },
+    });
+    if (!res.ok) throw new Error('Delete failed');
+
+    showToast('Entry deleted & logged');
+    renderReceivedDate();
+  } catch (err) {
+    console.error('Failed to delete received date log:', err);
+    showToast('Failed to delete', 'delete');
+  }
+}
+
 // --- EDIT LOG ---
 
 function renderEditLog() {
@@ -818,41 +1047,105 @@ function renderEditLog() {
 
 // --- DELETION LOG ---
 
-function renderDeleteLog() {
-  const logs = adminData.deletionLogs || [];
+let deleteLogFilter = 'transactions';
 
-  // KPIs
-  document.getElementById('deletelog-kpi-total').textContent = logs.length.toLocaleString();
-  const branches = new Set(logs.map(l => l.branch).filter(Boolean));
-  document.getElementById('deletelog-kpi-branches').textContent = branches.size;
+function filterDeleteLog(type) {
+  deleteLogFilter = type;
 
-  const table = document.getElementById('deletelog-table');
-  if (logs.length === 0) {
-    table.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">delete_sweep</span><p class="text-sm font-medium">No deletions recorded yet</p><p class="text-xs mt-1">Transactions deleted by BOE users will appear here</p></div></td></tr>`;
-    return;
+  // Update button styles
+  const txnBtn = document.getElementById('deletelog-filter-txn');
+  const rdBtn = document.getElementById('deletelog-filter-rd');
+  const activeClass = 'px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white transition-colors';
+  const inactiveClass = 'px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors';
+
+  if (type === 'transactions') {
+    txnBtn.className = activeClass;
+    rdBtn.className = inactiveClass;
+  } else {
+    txnBtn.className = inactiveClass;
+    rdBtn.className = activeClass;
   }
 
-  table.innerHTML = logs.map(l => {
-    const typeBadge = l.entry_type === 'in'
-      ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
-      : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>';
+  renderDeleteLog();
+}
 
-    return `
+function renderDeleteLog() {
+  const txnLogs = adminData.deletionLogs || [];
+  const rdLogs = adminData.receivedDateDeletions || [];
+
+  // KPIs — show combined totals
+  const totalDeletions = txnLogs.length + rdLogs.length;
+  document.getElementById('deletelog-kpi-total').textContent = totalDeletions.toLocaleString();
+  const allBranches = new Set([
+    ...txnLogs.map(l => l.branch).filter(Boolean),
+    ...rdLogs.map(l => l.location).filter(Boolean),
+  ]);
+  document.getElementById('deletelog-kpi-branches').textContent = allBranches.size;
+
+  const table = document.getElementById('deletelog-table');
+  const thead = document.getElementById('deletelog-thead');
+  const title = document.getElementById('deletelog-table-title');
+  const subtitle = document.getElementById('deletelog-table-subtitle');
+
+  if (deleteLogFilter === 'transactions') {
+    if (title) title.textContent = 'Deleted Transactions';
+    if (subtitle) subtitle.textContent = 'Stock entries deleted by BOE users';
+    if (thead) thead.innerHTML = '<tr><th class="px-6 py-4 font-semibold">Deleted At</th><th class="px-6 py-4 font-semibold">Item</th><th class="px-6 py-4 font-semibold">Type & Qty</th><th class="px-6 py-4 font-semibold">Original Date</th><th class="px-6 py-4 font-semibold">Deleted By</th><th class="px-6 py-4 font-semibold">Branch</th></tr>';
+
+    if (txnLogs.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">delete_sweep</span><p class="text-sm font-medium">No transaction deletions recorded</p></div></td></tr>`;
+      return;
+    }
+
+    table.innerHTML = txnLogs.map(l => {
+      const typeBadge = l.entry_type === 'in'
+        ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+        : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>';
+
+      return `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+          <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${formatDate(l.deleted_at)}</td>
+          <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">${escHtml(l.item_name || '--')}</td>
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-2">
+              ${typeBadge}
+              <span class="font-semibold text-slate-700 dark:text-slate-300">${l.entry_type === 'in' ? '+' : '-'}${l.quantity}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${l.original_date ? formatDate(l.original_date) : '--'}</td>
+          <td class="px-6 py-4 text-slate-700 dark:text-slate-300">${escHtml(l.deleted_by || '--')}</td>
+          <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(l.branch || '--')}</td>
+        </tr>
+      `;
+    }).join('');
+
+  } else {
+    // Received date deletions
+    if (title) title.textContent = 'Deleted Received Dates';
+    if (subtitle) subtitle.textContent = 'Received date entries deleted by branch users';
+    if (thead) thead.innerHTML = '<tr><th class="px-6 py-4 font-semibold">Deleted At</th><th class="px-6 py-4 font-semibold">Received Date</th><th class="px-6 py-4 font-semibold">Note</th><th class="px-6 py-4 font-semibold">Logged By</th><th class="px-6 py-4 font-semibold">Deleted By</th><th class="px-6 py-4 font-semibold">Branch</th></tr>';
+
+    if (rdLogs.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">event_busy</span><p class="text-sm font-medium">No received date deletions recorded</p></div></td></tr>`;
+      return;
+    }
+
+    table.innerHTML = rdLogs.map(l => `
       <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
         <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${formatDate(l.deleted_at)}</td>
-        <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">${escHtml(l.item_name || '--')}</td>
-        <td class="px-6 py-4">
+        <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
           <div class="flex items-center gap-2">
-            ${typeBadge}
-            <span class="font-semibold text-slate-700 dark:text-slate-300">${l.entry_type === 'in' ? '+' : '-'}${l.quantity}</span>
+            <span class="material-symbols-outlined text-primary text-sm">event_available</span>
+            ${escHtml(formatDateShort(l.received_date))}
           </div>
         </td>
-        <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${l.original_date ? formatDate(l.original_date) : '--'}</td>
+        <td class="px-6 py-4 text-slate-600 dark:text-slate-400">${escHtml(l.note || '--')}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${escHtml(l.logged_by || '--')}</td>
         <td class="px-6 py-4 text-slate-700 dark:text-slate-300">${escHtml(l.deleted_by || '--')}</td>
-        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(l.branch || '--')}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(l.location || '--')}</td>
       </tr>
-    `;
-  }).join('');
+    `).join('');
+  }
 }
 
 // --- NEW ENTRY STATE ---
@@ -884,8 +1177,8 @@ function navigateTo(page) {
     }
   });
 
-  // Update admin nav highlighting (branchdetail is a sub-page of admin)
-  const adminPage = page === 'branchdetail' ? 'admin' : page;
+  // Update admin nav highlighting (branchdetail/closingstock are sub-pages of admin)
+  const adminPage = (page === 'branchdetail' || page === 'closingstock') ? 'admin' : page;
   document.querySelectorAll('.nav-link-admin').forEach(link => {
     if (link.dataset.page === adminPage) {
       link.className = 'nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold';
@@ -921,6 +1214,8 @@ function renderPage(page) {
     case 'editlog': renderEditLog(); break;
     case 'deletelog': renderDeleteLog(); break;
     case 'branchdetail': renderBranchDetail(); break;
+    case 'closingstock': renderClosingStock(); break;
+    case 'receiveddate': renderReceivedDate(); break;
   }
 }
 
@@ -1180,12 +1475,69 @@ function renderSuppliers() {
 }
 
 function renderReports() {
-  const inv = appData.inventory;
-  const txns = appData.transactions;
-
   const now = new Date();
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  // --- Admin branch filter ---
+  const branchFilterEl = document.getElementById('report-branch-filter');
+  const branchPicker = document.getElementById('report-branch-picker');
+
+  let inv, txns;
+
+  if (isHeadOffice) {
+    // Show branch filter and populate options
+    if (branchFilterEl) branchFilterEl.classList.remove('hidden');
+
+    const allEntries = adminData.entries;
+    const allEmployees = adminData.employees;
+    const branchesFromEntries = allEntries.map(e => e.location).filter(Boolean);
+    const branchesFromEmployees = allEmployees.map(e => e.location).filter(Boolean);
+    const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
+
+    // Populate branch picker (preserve current selection)
+    if (branchPicker) {
+      const currentVal = branchPicker.value;
+      branchPicker.innerHTML = '<option value="all">All Branches</option>' +
+        allBranches.map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('');
+      if (currentVal && (currentVal === 'all' || allBranches.includes(currentVal))) {
+        branchPicker.value = currentVal;
+      }
+    }
+
+    const selectedBranchReport = branchPicker ? branchPicker.value : 'all';
+    const filteredEntries = selectedBranchReport === 'all'
+      ? allEntries
+      : allEntries.filter(e => e.location === selectedBranchReport);
+
+    // Build inventory from filtered entries
+    inv = DEFAULT_INVENTORY.map(item => {
+      let qty = 0;
+      filteredEntries.forEach(e => {
+        if (e.item_name === item.name) {
+          if (e.entry_type === 'in') qty += e.quantity;
+          else qty = Math.max(0, qty - e.quantity);
+        }
+      });
+      return { ...item, qty };
+    });
+
+    // Build transactions from filtered entries
+    txns = filteredEntries.map(e => ({
+      id: e.id,
+      itemName: e.item_name,
+      sku: e.hsn_code,
+      type: e.entry_type,
+      qty: e.quantity,
+      date: e.created_at,
+      user: e.emp_name,
+    }));
+  } else {
+    // Regular BOE mode
+    if (branchFilterEl) branchFilterEl.classList.add('hidden');
+    inv = appData.inventory;
+    txns = appData.transactions;
+  }
 
   // --- Read picker values or default to today / current month ---
   const datePicker = document.getElementById('report-date-picker');
@@ -1880,6 +2232,54 @@ function exportReportsToExcel() {
 
   XLSX.writeFile(wb, 'Reports_' + selectedDateStr + '.xlsx');
   showToast('Reports Excel downloaded');
+}
+
+async function copyReportImages() {
+  const todayEl = document.getElementById('report-today');
+  const mtdEl = document.getElementById('report-mtd');
+
+  if (!todayEl || !mtdEl) {
+    showToast('Please open the Reports page first', 'delete');
+    return;
+  }
+
+  showToast('Copying images...');
+
+  try {
+    const isDark = document.documentElement.classList.contains('dark');
+    const canvasOpts = {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: isDark ? '#1c2631' : '#ffffff',
+    };
+
+    const [todayCanvas, mtdCanvas] = await Promise.all([
+      html2canvas(todayEl, canvasOpts),
+      html2canvas(mtdEl, canvasOpts),
+    ]);
+
+    // Combine both canvases into one image
+    const gap = 24;
+    const combinedCanvas = document.createElement('canvas');
+    combinedCanvas.width = todayCanvas.width + mtdCanvas.width + gap;
+    combinedCanvas.height = Math.max(todayCanvas.height, mtdCanvas.height);
+    const ctx = combinedCanvas.getContext('2d');
+    ctx.fillStyle = isDark ? '#101922' : '#fefce8';
+    ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+    ctx.drawImage(todayCanvas, 0, 0);
+    ctx.drawImage(mtdCanvas, todayCanvas.width + gap, 0);
+
+    const blob = await new Promise(r => combinedCanvas.toBlob(r, 'image/png'));
+
+    await navigator.clipboard.write([
+      new ClipboardItem({ 'image/png': blob })
+    ]);
+
+    showToast('Report images copied to clipboard');
+  } catch (err) {
+    console.error('Copy failed:', err);
+    showToast('Failed to copy images', 'delete');
+  }
 }
 
 async function shareReports() {

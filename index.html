@@ -153,6 +153,10 @@
         <span class="material-symbols-outlined">bar_chart</span>
         Reports
       </a>
+      <a class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="receiveddate">
+        <span class="material-symbols-outlined">event_available</span>
+        Stock Received
+      </a>
       <button onclick="logout()" class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors w-full mt-2">
         <span class="material-symbols-outlined">logout</span>
         Logout
@@ -464,6 +468,10 @@
             <p class="text-sm text-slate-500 dark:text-slate-400">Inventory analytics and summaries</p>
           </div>
           <div class="flex items-center gap-3">
+            <button onclick="copyReportImages()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors">
+              <span class="material-symbols-outlined text-base">content_copy</span>
+              Copy
+            </button>
             <button onclick="shareReports()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
               <span class="material-symbols-outlined text-base">share</span>
               Share
@@ -475,8 +483,18 @@
           </div>
         </div>
 
-        <!-- Date & Month Pickers -->
+        <!-- Filters: Location (admin only) + Date & Month Pickers -->
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
+          <!-- Branch Filter (admin only) -->
+          <div id="report-branch-filter" class="hidden flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-violet-500">location_on</span>
+            <div class="flex flex-col gap-0.5 flex-1">
+              <label for="report-branch-picker" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Branch</label>
+              <select id="report-branch-picker" onchange="renderReports()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full">
+                <option value="all">All Branches</option>
+              </select>
+            </div>
+          </div>
           <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
             <span class="material-symbols-outlined text-amber-500">today</span>
             <div class="flex flex-col gap-0.5 flex-1">
@@ -515,15 +533,15 @@
 
         <!-- Aggregate KPIs -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div onclick="navigateTo('closingstock')" class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:scale-[1.02] hover:shadow-md transition-all duration-200">
             <div class="flex items-center justify-between mb-4">
               <span class="p-2 bg-blue-100 dark:bg-blue-900/30 text-primary rounded-lg">
                 <span class="material-symbols-outlined">inventory</span>
               </span>
               <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">All Branches</span>
             </div>
-            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock Entries</p>
-            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-total-entries">--</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Closing Stock</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="admin-kpi-closing-stock">--</h3>
           </div>
 
           <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border-2 border-red-500/20 dark:border-red-500/30 shadow-sm">
@@ -700,8 +718,8 @@
         <!-- Header -->
         <div class="flex items-center justify-between mb-8">
           <div>
-            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Deleted Transactions</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Record of all transactions deleted by BOE users</p>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Deleted Log</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Record of all deletions by BOE users</p>
           </div>
           <div class="flex items-center gap-2 px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider">
             <span class="material-symbols-outlined text-sm">delete_sweep</span>
@@ -734,15 +752,25 @@
           </div>
         </div>
 
+        <!-- Filter Toggle -->
+        <div class="flex items-center gap-2 mb-6">
+          <button onclick="filterDeleteLog('transactions')" id="deletelog-filter-txn" class="px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white transition-colors">
+            Transactions
+          </button>
+          <button onclick="filterDeleteLog('received')" id="deletelog-filter-rd" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+            Received Dates
+          </button>
+        </div>
+
         <!-- Deleted Log Table -->
         <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="p-6 border-b border-slate-200 dark:border-slate-800">
-            <h4 class="text-lg font-bold text-slate-800 dark:text-white">All Deletions</h4>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Complete history of deleted transactions</p>
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white" id="deletelog-table-title">All Deletions</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" id="deletelog-table-subtitle">Complete history of deleted transactions</p>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left">
-              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+              <thead id="deletelog-thead" class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
                 <tr>
                   <th class="px-6 py-4 font-semibold">Deleted At</th>
                   <th class="px-6 py-4 font-semibold">Item</th>
@@ -880,6 +908,104 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-100 dark:bg-slate-800" id="bd-team-grid">
             <div class="col-span-full bg-white dark:bg-[#1c2631] p-6 text-center text-slate-400 text-sm">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CLOSING STOCK PAGE (Admin) ===== -->
+      <div id="page-closingstock" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div class="flex items-center gap-4">
+            <button onclick="navigateTo('admin')" class="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+              <span class="material-symbols-outlined">arrow_back</span>
+              <span class="text-sm font-medium">Back</span>
+            </button>
+            <div>
+              <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Closing Stock</h2>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Branch-wise inventory levels</p>
+            </div>
+          </div>
+          <button onclick="exportClosingStockToExcel()" class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors">
+            <span class="material-symbols-outlined text-base">download</span>
+            Export Excel
+          </button>
+        </div>
+
+        <!-- Branch Closing Stock Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Branch</th>
+                  <th class="px-6 py-4 font-semibold text-right">Closing Stock</th>
+                </tr>
+              </thead>
+              <tbody id="cs-branch-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="2">Loading...</td></tr>
+              </tbody>
+              <tfoot class="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                <tr>
+                  <td class="px-6 py-4 font-bold text-slate-800 dark:text-white">Total</td>
+                  <td class="px-6 py-4 font-bold text-slate-800 dark:text-white text-right" id="cs-grand-total">--</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== STOCK RECEIVED DATE PAGE (Branch only) ===== -->
+      <div id="page-receiveddate" class="hidden">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Stock Received Date</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Log the date when stock was physically received at your branch</p>
+          </div>
+        </div>
+
+        <!-- Add New Entry -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 mb-8">
+          <h4 class="text-sm font-bold text-slate-800 dark:text-white mb-4">Log Received Date</h4>
+          <div class="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+            <div class="flex-1 w-full">
+              <label for="rd-date-input" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Date Received</label>
+              <input id="rd-date-input" type="date" class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"/>
+            </div>
+            <div class="flex-1 w-full">
+              <label for="rd-note-input" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Note (optional)</label>
+              <input id="rd-note-input" type="text" placeholder="e.g. Monthly stationery delivery" class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-primary focus:border-transparent"/>
+            </div>
+            <button onclick="saveReceivedDateLog()" class="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors whitespace-nowrap">
+              <span class="material-symbols-outlined text-base">save</span>
+              Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Logged Dates Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Received Date Log</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">All recorded stock receipt dates for this branch</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Date Received</th>
+                  <th class="px-6 py-4 font-semibold">Note</th>
+                  <th class="px-6 py-4 font-semibold">Logged By</th>
+                  <th class="px-6 py-4 font-semibold">Logged At</th>
+                  <th class="px-6 py-4 font-semibold w-20"></th>
+                </tr>
+              </thead>
+              <tbody id="received-date-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
