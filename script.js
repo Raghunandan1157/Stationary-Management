@@ -492,7 +492,7 @@ function renderDashboard() {
   if (selectedLocation) {
     teamGrid.innerHTML = '<div class="col-span-full p-6 text-center text-slate-400 dark:text-slate-500 text-sm">Loading team...</div>';
     const TEAM_COLORS = ['from-primary to-blue-400','from-emerald-500 to-teal-400','from-violet-500 to-purple-400','from-amber-500 to-orange-400','from-rose-500 to-pink-400','from-cyan-500 to-sky-400','from-indigo-500 to-blue-400','from-lime-500 to-green-400'];
-    supabaseFetch('employees', 'select=name,role,emp_id&location=eq.' + encodeURIComponent(selectedLocation) + '&order=name.asc')
+    supabaseFetch('employees', 'select=*&location=eq.' + encodeURIComponent(selectedLocation) + '&order=name.asc')
       .then(members => {
         if (!members.length) {
           teamGrid.innerHTML = '<div class="col-span-full p-6 text-center text-slate-400 dark:text-slate-500 text-sm">No team members found</div>';
@@ -502,12 +502,14 @@ function renderDashboard() {
         teamGrid.innerHTML = members.map((m, i) => {
           const initials = m.name ? m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
           const color = TEAM_COLORS[i % TEAM_COLORS.length];
-          return `<div class="bg-white dark:bg-[#1c2631] p-6 flex items-center gap-4">
+          const memberData = encodeURIComponent(JSON.stringify(m));
+          return `<div onclick="showTeamMemberModal(decodeURIComponent('${memberData}'), '${color}')" class="bg-white dark:bg-[#1c2631] p-6 flex items-center gap-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
             <div class="size-12 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-sm flex-shrink-0">${initials}</div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <p class="font-semibold text-slate-800 dark:text-white truncate">${escHtml(m.name)}</p>
               <p class="text-xs text-slate-500 dark:text-slate-400">${escHtml(m.role)}</p>
             </div>
+            <span class="material-symbols-outlined text-slate-300 dark:text-slate-600 text-base">chevron_right</span>
           </div>`;
         }).join('');
         teamAvatars.innerHTML = members.map((m, i) => {
@@ -991,6 +993,53 @@ function formatDate(isoStr) {
   const d = new Date(isoStr);
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+// --- TEAM MEMBER MODAL ---
+
+function showTeamMemberModal(jsonStr, color) {
+  const m = JSON.parse(jsonStr);
+  const initials = m.name ? m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
+
+  const overlay = document.getElementById('team-modal-overlay');
+  overlay.innerHTML = `
+    <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+      <!-- Header with gradient -->
+      <div class="relative bg-gradient-to-r ${color.replace('from-primary', 'from-[#137fec]')} px-6 pt-6 pb-14">
+        <button onclick="closeTeamModal()" class="absolute top-4 right-4 text-white/70 hover:text-white">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <!-- Avatar -->
+      <div class="relative z-10 flex flex-col items-center -mt-10 mb-2">
+        <div class="size-20 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white dark:ring-[#1c2631] shadow-lg">
+          ${initials}
+        </div>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white mt-3">${escHtml(m.name || 'Unknown')}</h3>
+        <span class="inline-flex items-center gap-1 mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">${escHtml(m.role || 'Staff')}</span>
+      </div>
+      <!-- Details -->
+      <div class="grid grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800 mt-4">
+        <div class="bg-white dark:bg-[#1c2631] p-4 flex flex-col gap-1">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Employee ID</span>
+          <p class="text-sm font-semibold text-slate-800 dark:text-white font-mono">${escHtml(m.emp_id || '--')}</p>
+        </div>
+        <div class="bg-white dark:bg-[#1c2631] p-4 flex flex-col gap-1">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Location</span>
+          <p class="text-sm font-semibold text-slate-800 dark:text-white">${escHtml(m.location || '--')}</p>
+        </div>
+        <div class="bg-white dark:bg-[#1c2631] p-4 flex flex-col gap-1 col-span-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Mobile</span>
+          <p class="text-sm font-semibold text-slate-800 dark:text-white">${m.mobile ? `<a href="tel:${escHtml(m.mobile)}" class="text-primary hover:underline">${escHtml(m.mobile)}</a>` : '--'}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  overlay.classList.remove('hidden');
+}
+
+function closeTeamModal() {
+  document.getElementById('team-modal-overlay').classList.add('hidden');
 }
 
 // --- EXPORT TO EXCEL ---
