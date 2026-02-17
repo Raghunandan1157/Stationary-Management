@@ -537,6 +537,28 @@ function formatDate(isoStr) {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
+// --- EXPORT TO EXCEL ---
+
+function exportInventoryToExcel() {
+  const rows = appData.inventory.map(item => ({
+    'Item Name': item.name,
+    'SKU': item.sku,
+    'Category': item.category,
+    'Quantity': item.qty,
+    'Reorder Level': item.reorder,
+    'Status': item.qty <= 0 ? 'Out of Stock' : item.qty <= item.reorder ? 'Low Stock' : 'In Stock',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+  XLSX.writeFile(wb, 'Inventory_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  showToast('Excel file downloaded');
+}
+
 // --- INIT ---
 
 renderDashboard();
