@@ -16,7 +16,7 @@
         extend: {
           colors: {
             "primary": "#137fec",
-            "background-light": "#f6f7f8",
+            "background-light": "#fefce8",
             "background-dark": "#101922",
           },
           fontFamily: {
@@ -149,10 +149,6 @@
         <span class="material-symbols-outlined">swap_horiz</span>
         Transactions
       </a>
-      <a class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="suppliers">
-        <span class="material-symbols-outlined">handshake</span>
-        Suppliers
-      </a>
       <a class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="reports">
         <span class="material-symbols-outlined">bar_chart</span>
         Reports
@@ -168,6 +164,14 @@
       <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold" href="#" data-page="admin">
         <span class="material-symbols-outlined">admin_panel_settings</span>
         Admin Dashboard
+      </a>
+      <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="editlog">
+        <span class="material-symbols-outlined">edit_note</span>
+        Edit Log
+      </a>
+      <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="deletelog">
+        <span class="material-symbols-outlined">delete_sweep</span>
+        Deleted Log
       </a>
       <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#" data-page="reports">
         <span class="material-symbols-outlined">bar_chart</span>
@@ -568,10 +572,11 @@
                   <th class="px-6 py-4 font-semibold">Stock In Qty</th>
                   <th class="px-6 py-4 font-semibold">Stock Out Qty</th>
                   <th class="px-6 py-4 font-semibold">Employees</th>
+                  <th class="px-6 py-4 font-semibold w-10"></th>
                 </tr>
               </thead>
               <tbody id="admin-branch-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="6">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -620,6 +625,261 @@
             <div id="admin-employees-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800 max-h-96 overflow-y-auto">
               <div class="col-span-full bg-white dark:bg-[#1c2631] p-6 text-center text-slate-400 text-sm">Loading...</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== EDIT LOG PAGE (Admin) ===== -->
+      <div id="page-editlog" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Edit Log</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Audit trail of all transaction edits across branches</p>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-bold uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">edit_note</span>
+            Audit
+          </div>
+        </div>
+
+        <!-- KPI Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+                <span class="material-symbols-outlined">edit</span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">All Time</span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Edits</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="editlog-kpi-total">--</h3>
+          </div>
+
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 rounded-lg">
+                <span class="material-symbols-outlined">location_on</span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unique</span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Branches with Edits</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="editlog-kpi-branches">--</h3>
+          </div>
+        </div>
+
+        <!-- Edit Log Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">All Edits</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Complete history of transaction modifications</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Date</th>
+                  <th class="px-6 py-4 font-semibold">Item</th>
+                  <th class="px-6 py-4 font-semibold">Old → New</th>
+                  <th class="px-6 py-4 font-semibold">Edited By</th>
+                  <th class="px-6 py-4 font-semibold">Branch</th>
+                </tr>
+              </thead>
+              <tbody id="editlog-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== DELETED LOG PAGE (Admin) ===== -->
+      <div id="page-deletelog" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Deleted Transactions</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Record of all transactions deleted by BOE users</p>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">delete_sweep</span>
+            Deletions
+          </div>
+        </div>
+
+        <!-- KPI Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
+                <span class="material-symbols-outlined">delete</span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">All Time</span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Deletions</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="deletelog-kpi-total">--</h3>
+          </div>
+
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 rounded-lg">
+                <span class="material-symbols-outlined">location_on</span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unique</span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Branches with Deletions</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="deletelog-kpi-branches">--</h3>
+          </div>
+        </div>
+
+        <!-- Deleted Log Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">All Deletions</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Complete history of deleted transactions</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Deleted At</th>
+                  <th class="px-6 py-4 font-semibold">Item</th>
+                  <th class="px-6 py-4 font-semibold">Type & Qty</th>
+                  <th class="px-6 py-4 font-semibold">Original Date</th>
+                  <th class="px-6 py-4 font-semibold">Deleted By</th>
+                  <th class="px-6 py-4 font-semibold">Branch</th>
+                </tr>
+              </thead>
+              <tbody id="deletelog-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="6">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== BRANCH DETAIL PAGE (Admin) ===== -->
+      <div id="page-branchdetail" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div class="flex items-center gap-4">
+            <button onclick="navigateTo('admin')" class="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+              <span class="material-symbols-outlined">arrow_back</span>
+              <span class="text-sm font-medium">Back</span>
+            </button>
+            <div>
+              <h2 class="text-2xl font-bold text-slate-800 dark:text-white" id="bd-branch-name">--</h2>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Branch Overview</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-full text-xs font-bold uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">location_on</span>
+            <span id="bd-branch-badge">--</span>
+          </div>
+        </div>
+
+        <!-- KPI Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-blue-100 dark:bg-blue-900/30 text-primary rounded-lg">
+                <span class="material-symbols-outlined">inventory</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Closing Stock</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="bd-kpi-closing">--</h3>
+          </div>
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+                <span class="material-symbols-outlined">warning</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Low Stock Items</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="bd-kpi-low">--</h3>
+          </div>
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                <span class="material-symbols-outlined">login</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock In</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="bd-kpi-in">--</h3>
+          </div>
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg">
+                <span class="material-symbols-outlined">logout</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Stock Out</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="bd-kpi-out">--</h3>
+          </div>
+        </div>
+
+        <!-- Inventory Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-8">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Inventory</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Current stock levels at this branch</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Item Name</th>
+                  <th class="px-6 py-4 font-semibold">Category</th>
+                  <th class="px-6 py-4 font-semibold">Quantity</th>
+                  <th class="px-6 py-4 font-semibold">Reorder Level</th>
+                  <th class="px-6 py-4 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody id="bd-inventory-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Recent Transactions Table -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-8">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <h4 class="text-lg font-bold text-slate-800 dark:text-white">Recent Transactions</h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Last 10 stock entries at this branch</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Item</th>
+                  <th class="px-6 py-4 font-semibold">Type</th>
+                  <th class="px-6 py-4 font-semibold">Quantity</th>
+                  <th class="px-6 py-4 font-semibold">Date</th>
+                  <th class="px-6 py-4 font-semibold">User</th>
+                </tr>
+              </thead>
+              <tbody id="bd-txn-table" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                <tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Team Members Grid -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <div class="flex items-center gap-3">
+              <h4 class="text-lg font-bold text-slate-800 dark:text-white">Team Members</h4>
+              <span id="bd-team-count" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hidden"></span>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">All employees at this branch</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-100 dark:bg-slate-800" id="bd-team-grid">
+            <div class="col-span-full bg-white dark:bg-[#1c2631] p-6 text-center text-slate-400 text-sm">Loading...</div>
           </div>
         </div>
       </div>

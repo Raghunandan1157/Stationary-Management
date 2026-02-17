@@ -478,6 +478,7 @@ async function loadFromSupabase() {
       qty: e.quantity,
       date: e.created_at,
       user: e.emp_name,
+      isEdited: e.is_edited || false,
     }));
 
     // Generate notifications for low/out-of-stock items
@@ -501,16 +502,21 @@ async function loadFromSupabase() {
 
 // --- ADMIN DATA ---
 
-let adminData = { entries: [], employees: [] };
+let adminData = { entries: [], employees: [], editLogs: [], deletionLogs: [] };
+let selectedBranch = null;
 
 async function loadAdminData() {
   try {
-    const [entries, employees] = await Promise.all([
+    const [entries, employees, editLogs, deletionLogs] = await Promise.all([
       supabaseFetch('stock_entries', 'select=*&order=created_at.desc'),
       supabaseFetch('employees', 'select=*&order=name.asc'),
+      supabaseFetch('edit_log', 'select=*&order=edited_at.desc'),
+      supabaseFetch('deletion_log', 'select=*&order=deleted_at.desc'),
     ]);
     adminData.entries = entries || [];
     adminData.employees = employees || [];
+    adminData.editLogs = editLogs || [];
+    adminData.deletionLogs = deletionLogs || [];
   } catch (err) {
     console.error('Failed to load admin data:', err);
     showToast('Failed to load admin data', 'delete');
@@ -540,7 +546,7 @@ function renderAdminDashboard() {
   // Branch-wise breakdown
   const branchTable = document.getElementById('admin-branch-table');
   if (allBranches.length === 0) {
-    branchTable.innerHTML = '<tr><td class="px-6 py-4 text-slate-400 text-center" colspan="5">No branch data found</td></tr>';
+    branchTable.innerHTML = '<tr><td class="px-6 py-4 text-slate-400 text-center" colspan="6">No branch data found</td></tr>';
   } else {
     branchTable.innerHTML = allBranches.map(branch => {
       const branchEntries = entries.filter(e => e.location === branch);
@@ -548,7 +554,7 @@ function renderAdminDashboard() {
       const branchOut = branchEntries.filter(e => e.entry_type === 'out').reduce((s, e) => s + e.quantity, 0);
       const branchEmps = employees.filter(e => e.location === branch).length;
       return `
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <tr onclick="openBranchDetail(this.dataset.branch)" data-branch="${escHtml(branch)}" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group">
           <td class="px-6 py-4">
             <div class="flex items-center gap-3">
               <div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -561,6 +567,7 @@ function renderAdminDashboard() {
           <td class="px-6 py-4 text-green-600 dark:text-green-400 font-semibold">+${branchIn.toLocaleString()}</td>
           <td class="px-6 py-4 text-red-500 font-semibold">-${branchOut.toLocaleString()}</td>
           <td class="px-6 py-4 text-slate-600 dark:text-slate-400">${branchEmps}</td>
+          <td class="px-6 py-4"><span class="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-primary text-base transition-colors">chevron_right</span></td>
         </tr>
       `;
     }).join('');
@@ -578,10 +585,13 @@ function renderAdminDashboard() {
           <span class="font-medium text-slate-800 dark:text-slate-200">${escHtml(e.item_name)}</span>
         </td>
         <td class="px-6 py-3">
-          ${e.entry_type === 'in'
-            ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
-            : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>'
-          }
+          <div class="flex items-center gap-1 flex-wrap">
+            ${e.entry_type === 'in'
+              ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+              : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>'
+            }
+            ${e.is_edited ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">EDITED</span>' : ''}
+          </div>
         </td>
         <td class="px-6 py-3 font-semibold text-slate-700 dark:text-slate-300">${e.entry_type === 'in' ? '+' : '-'}${e.quantity}</td>
         <td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">${escHtml(e.location || '--')}</td>
@@ -640,6 +650,211 @@ function filterAdminEmployees() {
   renderAdminEmployees();
 }
 
+// --- BRANCH DETAIL (Admin) ---
+
+function openBranchDetail(branchName) {
+  selectedBranch = branchName;
+  navigateTo('branchdetail');
+}
+
+function renderBranchDetail() {
+  if (!selectedBranch) { navigateTo('admin'); return; }
+
+  const entries = adminData.entries.filter(e => e.location === selectedBranch);
+  const employees = adminData.employees.filter(e => e.location === selectedBranch);
+
+  // Header
+  document.getElementById('bd-branch-name').textContent = selectedBranch;
+  document.getElementById('bd-branch-badge').textContent = selectedBranch;
+
+  // Compute per-item inventory from branch entries
+  const branchInventory = DEFAULT_INVENTORY.map(item => {
+    let qty = 0;
+    entries.forEach(e => {
+      if (e.item_name === item.name) {
+        if (e.entry_type === 'in') qty += e.quantity;
+        else qty = Math.max(0, qty - e.quantity);
+      }
+    });
+    return { ...item, qty };
+  });
+
+  // KPIs
+  const closingStock = branchInventory.reduce((s, i) => s + i.qty, 0);
+  const lowStockCount = branchInventory.filter(i => i.qty > 0 && i.qty <= i.reorder).length;
+  const stockInTotal = entries.filter(e => e.entry_type === 'in').reduce((s, e) => s + e.quantity, 0);
+  const stockOutTotal = entries.filter(e => e.entry_type === 'out').reduce((s, e) => s + e.quantity, 0);
+
+  document.getElementById('bd-kpi-closing').textContent = closingStock.toLocaleString() + ' Units';
+  document.getElementById('bd-kpi-low').textContent = lowStockCount + ' Items';
+  document.getElementById('bd-kpi-in').textContent = stockInTotal.toLocaleString() + ' Units';
+  document.getElementById('bd-kpi-out').textContent = stockOutTotal.toLocaleString() + ' Units';
+
+  // Inventory table
+  const invTable = document.getElementById('bd-inventory-table');
+  const itemsWithStock = branchInventory.filter(i => i.qty > 0 || entries.some(e => e.item_name === i.name));
+  if (itemsWithStock.length === 0) {
+    invTable.innerHTML = '<tr><td colspan="5" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">inventory_2</span><p class="text-sm font-medium">No inventory data for this branch</p><p class="text-xs mt-1">Stock entries will appear here once recorded</p></div></td></tr>';
+  } else {
+    invTable.innerHTML = itemsWithStock.map(item => {
+      let status, statusClass;
+      if (item.qty <= 0) {
+        status = 'Out of Stock'; statusClass = 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+      } else if (item.qty <= item.reorder) {
+        status = 'Low Stock'; statusClass = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+      } else {
+        status = 'In Stock'; statusClass = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      }
+      return `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+          <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">${escHtml(item.name)}</td>
+          <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(item.category)}</td>
+          <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${item.qty.toLocaleString()} ${escHtml(item.unit || 'No')}</td>
+          <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${item.reorder} ${escHtml(item.unit || 'No')}</td>
+          <td class="px-6 py-4"><span class="py-1 px-2.5 rounded-full text-xs font-semibold ${statusClass}">${status}</span></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Recent transactions (last 10)
+  const recentTxns = entries.slice(0, 10);
+  const txnTable = document.getElementById('bd-txn-table');
+  if (recentTxns.length === 0) {
+    txnTable.innerHTML = '<tr><td colspan="5" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">swap_horiz</span><p class="text-sm font-medium">No transactions recorded</p><p class="text-xs mt-1">Stock entries for this branch will appear here</p></div></td></tr>';
+  } else {
+    txnTable.innerHTML = recentTxns.map(e => `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-3 font-medium text-slate-800 dark:text-slate-200">${escHtml(e.item_name)}</td>
+        <td class="px-6 py-3">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            ${e.entry_type === 'in'
+              ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+              : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>'
+            }
+            ${e.is_edited ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">EDITED</span>' : ''}
+          </div>
+        </td>
+        <td class="px-6 py-3 font-semibold text-slate-700 dark:text-slate-300">${e.entry_type === 'in' ? '+' : '-'}${e.quantity}</td>
+        <td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">${formatDate(e.created_at)}</td>
+        <td class="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">${escHtml(e.emp_name || '--')}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Team members
+  const teamGrid = document.getElementById('bd-team-grid');
+  const teamCount = document.getElementById('bd-team-count');
+  if (teamCount) {
+    if (employees.length > 0) { teamCount.textContent = employees.length; teamCount.classList.remove('hidden'); }
+    else { teamCount.classList.add('hidden'); }
+  }
+  const TEAM_COLORS = ['from-primary to-blue-400','from-emerald-500 to-teal-400','from-violet-500 to-purple-400','from-amber-500 to-orange-400','from-rose-500 to-pink-400','from-cyan-500 to-sky-400'];
+  if (employees.length === 0) {
+    teamGrid.innerHTML = '<div class="col-span-full p-6 text-center text-slate-400 dark:text-slate-500 text-sm">No employees found at this branch</div>';
+  } else {
+    teamGrid.innerHTML = employees.map((m, i) => {
+      const initials = m.name ? m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
+      const color = TEAM_COLORS[i % TEAM_COLORS.length];
+      return `
+        <div class="bg-white dark:bg-[#1c2631] p-4 flex items-center gap-3">
+          <div class="size-10 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-xs flex-shrink-0">${initials}</div>
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold text-slate-800 dark:text-white text-sm truncate">${escHtml(m.name)}</p>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400">${escHtml(m.role || '')} &middot; ${escHtml(m.emp_id || '')}</p>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+// --- EDIT LOG ---
+
+function renderEditLog() {
+  const logs = adminData.editLogs || [];
+
+  // KPIs
+  document.getElementById('editlog-kpi-total').textContent = logs.length.toLocaleString();
+  const branches = new Set(logs.map(l => l.branch).filter(Boolean));
+  document.getElementById('editlog-kpi-branches').textContent = branches.size;
+
+  const table = document.getElementById('editlog-table');
+  if (logs.length === 0) {
+    table.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">edit_note</span><p class="text-sm font-medium">No edits recorded yet</p><p class="text-xs mt-1">Edits made by BOE users will appear here</p></div></td></tr>`;
+    return;
+  }
+
+  table.innerHTML = logs.map(l => {
+    const typeBadge = (type) => type === 'in'
+      ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+      : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>';
+
+    const typeChanged = l.old_type !== l.new_type;
+    const qtyChanged = l.old_qty !== l.new_qty;
+
+    let changeHtml = '';
+    if (typeChanged) {
+      changeHtml += `<div class="flex items-center gap-1.5">${typeBadge(l.old_type)}<span class="material-symbols-outlined text-slate-400 text-sm">arrow_forward</span>${typeBadge(l.new_type)}</div>`;
+    }
+    if (qtyChanged) {
+      changeHtml += `<div class="flex items-center gap-1.5 text-xs"><span class="text-slate-500">Qty:</span><span class="font-semibold text-slate-600 dark:text-slate-300">${l.old_qty}</span><span class="material-symbols-outlined text-slate-400 text-sm">arrow_forward</span><span class="font-semibold text-slate-600 dark:text-slate-300">${l.new_qty}</span></div>`;
+    }
+    if (!typeChanged && !qtyChanged) {
+      changeHtml = '<span class="text-xs text-slate-400">No change</span>';
+    }
+
+    return `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${formatDate(l.edited_at)}</td>
+        <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">${escHtml(l.item_name || '--')}</td>
+        <td class="px-6 py-4"><div class="flex flex-col gap-1">${changeHtml}</div></td>
+        <td class="px-6 py-4 text-slate-700 dark:text-slate-300">${escHtml(l.edited_by || '--')}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(l.branch || '--')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// --- DELETION LOG ---
+
+function renderDeleteLog() {
+  const logs = adminData.deletionLogs || [];
+
+  // KPIs
+  document.getElementById('deletelog-kpi-total').textContent = logs.length.toLocaleString();
+  const branches = new Set(logs.map(l => l.branch).filter(Boolean));
+  document.getElementById('deletelog-kpi-branches').textContent = branches.size;
+
+  const table = document.getElementById('deletelog-table');
+  if (logs.length === 0) {
+    table.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="flex flex-col items-center text-slate-400 dark:text-slate-500"><span class="material-symbols-outlined text-5xl mb-3">delete_sweep</span><p class="text-sm font-medium">No deletions recorded yet</p><p class="text-xs mt-1">Transactions deleted by BOE users will appear here</p></div></td></tr>`;
+    return;
+  }
+
+  table.innerHTML = logs.map(l => {
+    const typeBadge = l.entry_type === 'in'
+      ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">IN</span>'
+      : '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">OUT</span>';
+
+    return `
+      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${formatDate(l.deleted_at)}</td>
+        <td class="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">${escHtml(l.item_name || '--')}</td>
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-2">
+            ${typeBadge}
+            <span class="font-semibold text-slate-700 dark:text-slate-300">${l.entry_type === 'in' ? '+' : '-'}${l.quantity}</span>
+          </div>
+        </td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">${l.original_date ? formatDate(l.original_date) : '--'}</td>
+        <td class="px-6 py-4 text-slate-700 dark:text-slate-300">${escHtml(l.deleted_by || '--')}</td>
+        <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${escHtml(l.branch || '--')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
 // --- NEW ENTRY STATE ---
 
 let entryCart = {};       // maps itemId → selected quantity
@@ -669,9 +884,10 @@ function navigateTo(page) {
     }
   });
 
-  // Update admin nav highlighting
+  // Update admin nav highlighting (branchdetail is a sub-page of admin)
+  const adminPage = page === 'branchdetail' ? 'admin' : page;
   document.querySelectorAll('.nav-link-admin').forEach(link => {
-    if (link.dataset.page === page) {
+    if (link.dataset.page === adminPage) {
       link.className = 'nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary font-semibold';
     } else {
       link.className = 'nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors';
@@ -702,6 +918,9 @@ function renderPage(page) {
     case 'reports': renderReports(); break;
     case 'newentry': renderNewEntryPage(); break;
     case 'admin': renderAdminDashboard(); break;
+    case 'editlog': renderEditLog(); break;
+    case 'deletelog': renderDeleteLog(); break;
+    case 'branchdetail': renderBranchDetail(); break;
   }
 }
 
@@ -795,10 +1014,13 @@ function renderDashboard() {
           </div>
         </td>
         <td class="px-6 py-4">
-          ${t.type === 'in'
-            ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
-            : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
-          }
+          <div class="flex items-center gap-1.5 flex-wrap">
+            ${t.type === 'in'
+              ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
+              : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
+            }
+            ${t.isEdited ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">EDITED</span>' : ''}
+          </div>
         </td>
         <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
         <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
@@ -903,10 +1125,13 @@ function renderTransactions() {
         </div>
       </td>
       <td class="px-6 py-4">
-        ${t.type === 'in'
-          ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
-          : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
-        }
+        <div class="flex items-center gap-1.5 flex-wrap">
+          ${t.type === 'in'
+            ? '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><span class="material-symbols-outlined text-[14px]">arrow_downward</span>Stock In</span>'
+            : '<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"><span class="material-symbols-outlined text-[14px]">arrow_upward</span>Stock Out</span>'
+          }
+          ${t.isEdited ? '<span class="inline-flex items-center gap-1 py-0.5 px-2 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">EDITED</span>' : ''}
+        </div>
       </td>
       <td class="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${t.type === 'in' ? '+' : '-'}${t.qty}</td>
       <td class="px-6 py-4 text-slate-500 dark:text-slate-400">${formatDate(t.date)}</td>
@@ -1233,7 +1458,27 @@ function deleteItem(id) {
 
 async function deleteTxn(txnId) {
   if (!confirm('Delete this transaction?')) return;
+
+  // Capture transaction details before deletion
+  const txn = appData.transactions.find(t => t.id === txnId);
+
   try {
+    // Log the deletion before removing
+    if (txn) {
+      await supabaseInsert('deletion_log', [{
+        stock_entry_id: txnId,
+        item_name: txn.itemName,
+        entry_type: txn.type,
+        quantity: txn.qty,
+        original_date: txn.date,
+        emp_name: txn.user,
+        deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
+        employee_id: currentEmployee ? currentEmployee.id : null,
+        branch: selectedLocation || null,
+        deleted_at: new Date().toISOString(),
+      }]);
+    }
+
     const res = await fetch(SUPABASE_URL + '/rest/v1/stock_entries?id=eq.' + txnId, {
       method: 'DELETE',
       headers: {
@@ -1286,11 +1531,32 @@ async function saveTxnEdit(e) {
     return;
   }
 
+  // Capture old values before update
+  const oldTxn = appData.transactions.find(t => t.id === id);
+  if (!oldTxn) return;
+
   try {
+    // Update the transaction + mark as edited
     await supabaseUpdate('stock_entries', id, {
       entry_type: newType,
       quantity: newQty,
+      is_edited: true,
+      edited_at: new Date().toISOString(),
     });
+
+    // Insert edit log entry
+    await supabaseInsert('edit_log', [{
+      stock_entry_id: id,
+      item_name: oldTxn.itemName,
+      old_type: oldTxn.type,
+      new_type: newType,
+      old_qty: oldTxn.qty,
+      new_qty: newQty,
+      edited_by: currentEmployee ? currentEmployee.name : 'Unknown',
+      employee_id: currentEmployee ? currentEmployee.id : null,
+      branch: selectedLocation || null,
+      edited_at: new Date().toISOString(),
+    }]);
 
     showToast('Transaction updated successfully');
     closeTxnEditModal();
