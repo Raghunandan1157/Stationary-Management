@@ -1562,7 +1562,11 @@ function renderReports() {
   const daysInMonth = monthEnd.getDate();
 
   // --- Date report: transactions on selected date ---
-  const dateTxns = txns.filter(t => t.date.slice(0, 10) === selectedDateStr);
+  const dateTxns = txns.filter(t => {
+    const d = new Date(t.date);
+    const local = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return local === selectedDateStr;
+  });
   const dateIn = dateTxns.filter(t => t.type === 'in');
   const dateOut = dateTxns.filter(t => t.type === 'out');
   const dateInQty = dateIn.reduce((s, t) => s + t.qty, 0);
@@ -2062,6 +2066,81 @@ function formatDate(isoStr) {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
+function formatDateDDMMYYYY(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return parts[2] + '-' + parts[1] + '-' + parts[0];
+}
+
+// --- CALENDAR GRID ---
+let calendarYear, calendarMonth, calendarSelectedDate;
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderCalendarGrid() {
+  const grid = document.getElementById('calendar-grid');
+  const label = document.getElementById('calendar-month-label');
+  if (!grid || !label) return;
+
+  label.textContent = MONTH_NAMES[calendarMonth] + ' ' + calendarYear;
+
+  const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+  let html = '';
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div></div>';
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    const isSelected = dateStr === calendarSelectedDate;
+    const isToday = dateStr === todayStr;
+    let cls = 'w-9 h-9 mx-auto flex items-center justify-center rounded-full text-xs font-medium cursor-pointer transition-all ';
+    if (isSelected) {
+      cls += 'bg-primary text-white font-bold shadow-md';
+    } else if (isToday) {
+      cls += 'ring-2 ring-primary text-primary dark:text-blue-400 font-semibold hover:bg-primary/10';
+    } else {
+      cls += 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700';
+    }
+    html += '<div class="py-0.5"><div class="' + cls + '" onclick="selectCalendarDate(\'' + dateStr + '\')">' + d + '</div></div>';
+  }
+  grid.innerHTML = html;
+
+  const preview = document.getElementById('entry-date-preview');
+  if (preview) {
+    preview.textContent = 'Entry will be saved for: ' + formatDateDDMMYYYY(calendarSelectedDate);
+  }
+}
+
+function selectCalendarDate(dateStr) {
+  calendarSelectedDate = dateStr;
+  renderCalendarGrid();
+}
+
+function calendarPrevMonth() {
+  calendarMonth--;
+  if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+  renderCalendarGrid();
+}
+
+function calendarNextMonth() {
+  calendarMonth++;
+  if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+  renderCalendarGrid();
+}
+
+function initCalendar() {
+  const today = new Date();
+  calendarYear = today.getFullYear();
+  calendarMonth = today.getMonth();
+  calendarSelectedDate = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  renderCalendarGrid();
+}
+
 // --- TEAM MEMBER MODAL ---
 
 function showTeamMemberModal(jsonStr, color) {
@@ -2166,7 +2245,11 @@ function exportReportsToExcel() {
   const monthStart = new Date(selYear, selMonth - 1, 1);
   const monthEnd = new Date(selYear, selMonth, 0, 23, 59, 59, 999);
 
-  const dateTxns = txns.filter(t => t.date.slice(0, 10) === selectedDateStr);
+  const dateTxns = txns.filter(t => {
+    const d = new Date(t.date);
+    const local = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return local === selectedDateStr;
+  });
   const monthTxns = txns.filter(t => {
     const d = new Date(t.date);
     return d >= monthStart && d <= monthEnd;
@@ -2551,14 +2634,59 @@ function clearEntryCart() {
   updateBottomBar();
 }
 
-async function confirmEntry() {
+function confirmEntry() {
   const itemIds = Object.keys(entryCart);
   if (itemIds.length === 0) {
     showToast('No items selected', 'delete');
     return;
   }
 
-  const now = new Date().toISOString();
+  // Set type label
+  const typeLabelEl = document.getElementById('entry-date-type-label');
+  if (typeLabelEl) {
+    if (entryType === 'in') {
+      typeLabelEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400';
+      typeLabelEl.textContent = 'Stock In';
+    } else {
+      typeLabelEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300';
+      typeLabelEl.textContent = 'Stock Out';
+    }
+  }
+
+  // Init calendar with today selected
+  initCalendar();
+  document.getElementById('entry-date-modal-overlay').classList.remove('hidden');
+}
+
+function showEntryDateModal() {
+  document.getElementById('entry-date-modal-overlay').classList.remove('hidden');
+}
+
+function closeEntryDateModal() {
+  document.getElementById('entry-date-modal-overlay').classList.add('hidden');
+}
+
+function confirmEntryWithDate() {
+  const dateValue = calendarSelectedDate;
+  if (!dateValue) { showToast('Please select a date', 'delete'); return; }
+  // Build local datetime string (NOT UTC) so date.slice(0,10) matches the selected date
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0') + ':' +
+    String(now.getSeconds()).padStart(2, '0');
+  const localISO = dateValue + 'T' + timeStr;
+  closeEntryDateModal();
+  executeEntry(localISO);
+}
+
+async function executeEntry(selectedDateISO) {
+  const itemIds = Object.keys(entryCart);
+  if (itemIds.length === 0) {
+    showToast('No items selected', 'delete');
+    return;
+  }
+
+  const now = selectedDateISO;
   const user = currentEmployee ? currentEmployee.name : 'Unknown';
   let maxTxnId = appData.transactions.length > 0
     ? Math.max(...appData.transactions.map(t => t.id))
@@ -2661,3 +2789,18 @@ if (checkSession()) {
   }
 }
 // Otherwise login screen is shown, renderDashboard called after loginConfirm()
+
+document.addEventListener('DOMContentLoaded', function() {
+  const dateModal = document.getElementById('entry-date-modal-overlay');
+  if (dateModal) {
+    dateModal.addEventListener('click', function(e) {
+      if (e.target === dateModal) closeEntryDateModal();
+    });
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && dateModal && !dateModal.classList.contains('hidden')) {
+      closeEntryDateModal();
+    }
+  });
+});
