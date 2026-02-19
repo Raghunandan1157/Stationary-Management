@@ -112,13 +112,25 @@ async function loginSelectLocation() {
   errorEl.classList.add('hidden');
   selectedLocation = location;
 
-  // Head Office → skip profile selection, show OTP step
-  if (location === 'Head Office') {
-    document.getElementById('login-step1').classList.add('hidden');
-    document.getElementById('login-step3').classList.remove('hidden');
-    document.getElementById('login-ho-otp').value = '';
-    document.getElementById('login-otp-error').classList.add('hidden');
-    showToast('OTP sent to your registered number');
+  // Head Office / Corporate Office → no BOE, skip profile selection, go straight to branch dashboard
+  if (location === 'Head Office' || location === 'Corporate Office') {
+    currentEmployee = { id: 0, emp_id: location === 'Head Office' ? 'HO-USER' : 'CO-USER', name: location, role: 'Staff', mobile: '', location: location };
+
+    sessionStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
+    sessionStorage.setItem('sr_location', selectedLocation);
+    localStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
+    localStorage.setItem('sr_location', selectedLocation);
+
+    appData.profile.branch = selectedLocation;
+    appData.profile.boe = 'Navachetana Livelihoods Pvt Ltd';
+    saveData(appData);
+
+    document.getElementById('login-screen').classList.add('hidden');
+    updateUserUI();
+    loadFromSupabase().then(() => {
+      saveData(appData);
+      renderDashboard();
+    });
     return;
   }
 
@@ -185,10 +197,17 @@ function loginBack() {
   currentEmployee = null;
 }
 
+function loginAdminStart() {
+  document.getElementById('login-step1').classList.add('hidden');
+  document.getElementById('login-step3').classList.remove('hidden');
+  document.getElementById('login-ho-otp').value = '';
+  document.getElementById('login-otp-error').classList.add('hidden');
+  showToast('Enter admin OTP to continue');
+}
+
 function loginBackFromOTP() {
   document.getElementById('login-step3').classList.add('hidden');
   document.getElementById('login-step1').classList.remove('hidden');
-  selectedLocation = null;
 }
 
 function loginHeadOfficeOTP() {
@@ -205,7 +224,7 @@ function loginHeadOfficeOTP() {
   errorEl.classList.add('hidden');
   isHeadOffice = true;
   selectedLocation = 'Head Office';
-  currentEmployee = { id: 0, emp_id: 'HO-ADMIN', name: 'Head Office Admin', role: 'Admin', mobile: '', location: 'Head Office' };
+  currentEmployee = { id: 0, emp_id: 'HO-ADMIN', name: 'Admin', role: 'Admin', mobile: '', location: 'Head Office' };
 
   // Save session
   sessionStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
