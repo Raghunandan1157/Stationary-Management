@@ -347,6 +347,19 @@ function switchToRegularMode() {
 document.addEventListener('DOMContentLoaded', () => {
   initLogin();
 
+  // Ripple water effect on btn-bounce buttons
+  document.querySelectorAll('.btn-bounce').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      const ripple = document.createElement('span');
+      ripple.classList.add('ripple');
+      const rect = btn.getBoundingClientRect();
+      ripple.style.left = (e.clientX - rect.left) + 'px';
+      ripple.style.top = (e.clientY - rect.top) + 'px';
+      btn.appendChild(ripple);
+      ripple.addEventListener('animationend', () => ripple.remove());
+    });
+  });
+
   // Admin nav link click handlers
   document.querySelectorAll('.nav-link-admin').forEach(link => {
     link.addEventListener('click', (e) => {
@@ -1930,8 +1943,22 @@ async function saveTxnEdit(e) {
 // --- HEADER BUTTONS ---
 
 document.getElementById('new-entry-btn').addEventListener('click', () => {
-  navigateTo('newentry');
+  showEntryTypeModal();
 });
+
+function showEntryTypeModal() {
+  document.getElementById('entry-type-modal-overlay').classList.remove('hidden');
+}
+
+function closeEntryTypeModal() {
+  document.getElementById('entry-type-modal-overlay').classList.add('hidden');
+}
+
+function selectEntryType(type) {
+  closeEntryTypeModal();
+  navigateTo('newentry');
+  setEntryType(type);
+}
 
 document.getElementById('notif-btn').addEventListener('click', () => {
   const panel = document.getElementById('notif-panel');
@@ -2507,12 +2534,6 @@ function renderEntryCards() {
         <div class="flex items-center gap-2 mb-3">
           <span class="material-symbols-outlined text-sm text-slate-400">inventory</span>
           <span class="text-sm text-slate-600 dark:text-slate-400">Stock: <strong class="text-slate-800 dark:text-white">${item.qty} ${escHtml(item.unit || 'No')}</strong></span>
-        </div>
-
-        <!-- Rate + GST -->
-        <div class="flex items-center gap-2 mb-4 text-xs text-slate-500 dark:text-slate-400">
-          <span class="material-symbols-outlined text-sm">currency_rupee</span>
-          <span>${rate.toFixed(2)} + ${gst}% GST</span>
         </div>
 
         <!-- Quantity Controls -->

@@ -468,13 +468,13 @@
             <p class="text-sm text-slate-500 dark:text-slate-400">Inventory analytics and summaries</p>
           </div>
           <div class="flex items-center gap-3">
-            <button onclick="copyReportImages()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors">
-              <span class="material-symbols-outlined text-base">content_copy</span>
-              Copy
+            <button onclick="copyReportImages()" class="btn-bounce flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors">
+              <span class="material-symbols-outlined text-base">laptop_mac</span>
+              Laptop / Desktop
             </button>
-            <button onclick="shareReports()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
-              <span class="material-symbols-outlined text-base">share</span>
-              Share
+            <button onclick="shareReports()" class="btn-bounce flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+              <span class="material-symbols-outlined text-base">smartphone</span>
+              Phone
             </button>
             <button onclick="exportReportsToExcel()" class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors">
               <span class="material-symbols-outlined text-base">download</span>
@@ -1208,6 +1208,31 @@
           Cancel
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Entry Type Selection Modal -->
+<div id="entry-type-modal-overlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" onclick="if(event.target===this)closeEntryTypeModal()">
+  <div class="entry-type-modal-card bg-white dark:bg-[#1c2631] rounded-2xl shadow-2xl w-full max-w-sm p-6 relative">
+    <button onclick="closeEntryTypeModal()" class="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors">
+      <span class="material-symbols-outlined text-xl">close</span>
+    </button>
+    <h3 class="text-lg font-bold text-slate-800 dark:text-white text-center mb-1">New Entry</h3>
+    <p class="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">Choose entry type</p>
+    <div class="flex gap-3">
+      <button onclick="selectEntryType('in')" class="flex-1 flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-slate-200 dark:border-slate-700 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 transition-all group">
+        <div class="w-14 h-14 rounded-full bg-green-100 dark:bg-green-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+          <span class="material-symbols-outlined text-3xl text-green-600 dark:text-green-400">arrow_downward</span>
+        </div>
+        <span class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">Stock In</span>
+      </button>
+      <button onclick="selectEntryType('out')" class="flex-1 flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-slate-200 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all group">
+        <div class="w-14 h-14 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+          <span class="material-symbols-outlined text-3xl text-red-600 dark:text-red-400">arrow_upward</span>
+        </div>
+        <span class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">Stock Out</span>
+      </button>
     </div>
   </div>
 </div>
