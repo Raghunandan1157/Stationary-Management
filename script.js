@@ -2541,12 +2541,12 @@ function renderEntryCards() {
         data-item-id="${item.id}">
 
         <!-- Header: Name + Stock Badge -->
-        <div class="flex items-start justify-between mb-3">
-          <div class="min-w-0 flex-1">
-            <h4 class="font-semibold text-slate-800 dark:text-white text-sm truncate">${escHtml(item.name)}</h4>
-            <p class="text-xs text-slate-400 font-mono mt-0.5">HSN: ${escHtml(item.sku)}</p>
+        <div class="mb-3">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h4 class="font-semibold text-slate-800 dark:text-white text-sm leading-snug">${escHtml(item.name)}</h4>
+            ${stockBadge ? `<div class="shrink-0">${stockBadge}</div>` : ''}
           </div>
-          ${stockBadge}
+          <p class="text-xs text-slate-400 font-mono mt-0.5">HSN: ${escHtml(item.sku)}</p>
         </div>
 
         <!-- Stock Level -->
