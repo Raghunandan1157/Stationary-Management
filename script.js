@@ -440,7 +440,8 @@ const DEFAULT_INVENTORY = [
   { id: 31, name: 'Stapler Kangaro HP-45', sku: '84729010', category: 'Machines', qty: 0, unit: 'No', reorder: 1, rate: 148.31, gst: 18 },
   { id: 32, name: 'Small Stapler Pins', sku: '84729010', category: 'Machines', qty: 0, unit: 'No', reorder: 5, rate: 80.51, gst: 18 },
   { id: 33, name: 'Big Stapler Pins', sku: '83052000', category: 'Machines', qty: 0, unit: 'No', reorder: 5, rate: 127.12, gst: 18 },
-  { id: 34, name: 'Punching Machine', sku: '84729099', category: 'Machines', qty: 0, unit: 'No', reorder: 2, rate: 101.69, gst: 18 },
+  { id: 34, name: 'Punching Machine - DP 280', sku: '84729099', category: 'Machines', qty: 0, unit: 'No', reorder: 2, rate: 101.69, gst: 18 },
+  { id: 35, name: 'Punching Machine - DP 600', sku: '84729099', category: 'Machines', qty: 0, unit: 'No', reorder: 2, rate: 101.69, gst: 18 },
 ];
 
 const DEFAULT_TRANSACTIONS = [];
