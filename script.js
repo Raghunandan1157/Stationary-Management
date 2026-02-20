@@ -527,13 +527,15 @@ async function loadFromSupabase() {
       }
     });
 
-    // Punching Machine data reset notice
-    appData.notifications.unshift({
-      id: 'punching-machine-notice',
-      text: 'Punching Machine data has been deleted. Please re-enter your stock data under the correct machine — DP 280 or DP 600.',
-      type: 'alert',
-      time: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-    });
+    // Punching Machine data reset notice (auto-expires 27 Feb 2026)
+    if (new Date() < new Date('2026-02-27')) {
+      appData.notifications.unshift({
+        id: 'punching-machine-notice',
+        text: 'Punching Machine data has been deleted. Please re-enter your stock data under the correct machine — DP 280 or DP 600.',
+        type: 'alert',
+        time: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      });
+    }
 
   } catch (err) {
     console.error('Failed to load from Supabase:', err);
