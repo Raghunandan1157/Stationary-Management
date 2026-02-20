@@ -527,6 +527,14 @@ async function loadFromSupabase() {
       }
     });
 
+    // Punching Machine data reset notice
+    appData.notifications.unshift({
+      id: 'punching-machine-notice',
+      text: 'Punching Machine data has been deleted. Please re-enter your stock data under the correct machine — DP 280 or DP 600.',
+      type: 'alert',
+      time: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+    });
+
   } catch (err) {
     console.error('Failed to load from Supabase:', err);
     showToast('Failed to load data from server', 'delete');
