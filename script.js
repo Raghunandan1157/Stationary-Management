@@ -1820,7 +1820,7 @@ function renderReports() {
 function filterReportByBranch(branch) {
   const picker = document.getElementById('report-branch-picker');
   if (picker) {
-    picker.value = branch;
+    picker.value = picker.value === branch ? 'all' : branch;
     renderReports();
   }
 }
