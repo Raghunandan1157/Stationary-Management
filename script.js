@@ -13,16 +13,29 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // TODO: Enable RLS policies on: stock_entries, employees, edit_log, deletion_log,
 // received_date_log, received_date_deletion_log, app_config
 
-// Helper: direct REST fetch from Supabase (works regardless of client lib)
+// Helper: direct REST fetch from Supabase with automatic pagination
+// PostgREST returns max 1000 rows by default; this fetches ALL rows.
 async function supabaseFetch(table, params = '') {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
-    headers: {
-      'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + SUPABASE_ANON,
-    },
-  });
-  if (!res.ok) throw new Error(`Supabase error: ${res.status} ${res.statusText}`);
-  return res.json();
+  const pageSize = 1000;
+  let allRows = [];
+  let offset = 0;
+  while (true) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + SUPABASE_ANON,
+        'Range': `${offset}-${offset + pageSize - 1}`,
+        'Prefer': 'count=exact',
+      },
+    });
+    if (!res.ok) throw new Error(`Supabase error: ${res.status} ${res.statusText}`);
+    const rows = await res.json();
+    allRows = allRows.concat(rows);
+    // If we got fewer rows than the page size, we've fetched everything
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return allRows;
 }
 
 async function supabaseInsert(table, rows) {
@@ -1325,7 +1338,10 @@ function renderPage(page) {
     case 'inventory': renderInventory(); break;
     case 'transactions': renderTransactions(); break;
     case 'suppliers': renderSuppliers(); break;
-    case 'reports': renderReports(); break;
+    case 'reports':
+      if (isHeadOffice) { loadAdminData().then(() => renderReports()); }
+      else { renderReports(); }
+      break;
     case 'newentry': renderNewEntryPage(); break;
     case 'admin': renderAdminDashboard(); break;
     case 'editlog': renderEditLog(); break;
@@ -1595,7 +1611,7 @@ function renderSuppliers() {
   `).join('');
 }
 
-async function renderReports() {
+function renderReports() {
   const now = new Date();
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1607,9 +1623,6 @@ async function renderReports() {
   let inv, txns;
 
   if (isHeadOffice) {
-    // Refresh admin data so reports always show latest entries
-    await loadAdminData();
-
     // Show branch filter and populate options
     if (branchFilterEl) branchFilterEl.classList.remove('hidden');
 
