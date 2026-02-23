@@ -117,7 +117,7 @@ async function loginSelectLocation() {
   errorEl.classList.add('hidden');
   selectedLocation = location;
 
-  // Head Office / Corporate Office → no BOE, skip profile selection, go straight to branch dashboard
+  // Head Office / Corporate Office → no BOE, skip profile selection
   if (location === 'Head Office' || location === 'Corporate Office') {
     currentEmployee = { id: 0, emp_id: location === 'Head Office' ? 'HO-USER' : 'CO-USER', name: location, role: 'Staff', mobile: '', location: location };
 
@@ -129,22 +129,20 @@ async function loginSelectLocation() {
     const loginTime = Date.now().toString();
     sessionStorage.setItem('sr_login_time', loginTime);
     localStorage.setItem('sr_login_time', loginTime);
-    // FIX #8: Persist Corporate Office as admin so it survives reload
-    isHeadOffice = true;
-    sessionStorage.setItem('sr_headoffice', 'true');
-    localStorage.setItem('sr_headoffice', 'true');
 
     appData.profile.branch = selectedLocation;
     appData.profile.boe = 'Navachetana Livelihoods Pvt Ltd';
     saveData(appData);
 
     document.getElementById('login-screen').classList.add('hidden');
-    switchToAdminMode();
     updateUserUI();
     // FIX #14: Add error handling to async data load
-    loadAdminData().then(() => navigateTo('admin')).catch(err => {
-      console.error('Failed to load admin data:', err);
-      showToast('Failed to load admin data', 'delete');
+    loadFromSupabase().then(() => {
+      saveData(appData);
+      renderDashboard();
+    }).catch(err => {
+      console.error('Failed to load data:', err);
+      showToast('Failed to load data from server', 'delete');
     });
     return;
   }
