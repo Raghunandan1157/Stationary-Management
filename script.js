@@ -1666,12 +1666,14 @@ function renderReports() {
   const datePicker = document.getElementById('report-date-picker');
   const monthPicker = document.getElementById('report-month-picker');
 
-  // Default picker values on first render
-  if (datePicker && !datePicker.value) datePicker.value = now.toISOString().slice(0, 10);
-  if (monthPicker && !monthPicker.value) monthPicker.value = now.toISOString().slice(0, 7);
+  // Default picker values on first render (use local date, not UTC)
+  const localDateStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const localMonthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  if (datePicker && !datePicker.value) datePicker.value = localDateStr;
+  if (monthPicker && !monthPicker.value) monthPicker.value = localMonthStr;
 
-  const selectedDateStr = datePicker ? datePicker.value : now.toISOString().slice(0, 10);
-  const selectedMonthStr = monthPicker ? monthPicker.value : now.toISOString().slice(0, 7);
+  const selectedDateStr = datePicker ? datePicker.value : localDateStr;
+  const selectedMonthStr = monthPicker ? monthPicker.value : localMonthStr;
 
   // Parse selected date
   const selectedDate = new Date(selectedDateStr + 'T00:00:00');
