@@ -1668,6 +1668,7 @@ function renderReports() {
       qty: e.quantity,
       date: e.created_at,
       user: e.emp_name,
+      location: e.location,
     }));
   } else {
     // Regular BOE mode
@@ -1740,7 +1741,7 @@ function renderReports() {
       <div class="flex items-center justify-between py-2">
         <div class="flex items-center gap-2 min-w-0">
           <span class="material-symbols-outlined text-sm ${t.type === 'in' ? 'text-green-500' : 'text-red-400'}">${t.type === 'in' ? 'arrow_downward' : 'arrow_upward'}</span>
-          <span class="text-sm text-slate-700 dark:text-slate-300 truncate">${escHtml(t.itemName)}</span>
+          <span class="text-sm text-slate-700 dark:text-slate-300 truncate">${escHtml(t.itemName)}${t.location ? ' <span class="text-slate-400 dark:text-slate-500">(' + escHtml(t.location) + ')</span>' : ''}</span>
         </div>
         <span class="text-sm font-semibold ${t.type === 'in' ? 'text-green-500' : 'text-red-400'} flex-shrink-0 ml-3">${t.type === 'in' ? '+' : '-'}${t.qty}</span>
       </div>
