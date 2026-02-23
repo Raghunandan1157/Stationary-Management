@@ -1595,7 +1595,7 @@ function renderSuppliers() {
   `).join('');
 }
 
-function renderReports() {
+async function renderReports() {
   const now = new Date();
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1607,6 +1607,9 @@ function renderReports() {
   let inv, txns;
 
   if (isHeadOffice) {
+    // Refresh admin data so reports always show latest entries
+    await loadAdminData();
+
     // Show branch filter and populate options
     if (branchFilterEl) branchFilterEl.classList.remove('hidden');
 
