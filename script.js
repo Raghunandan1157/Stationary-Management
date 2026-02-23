@@ -1872,7 +1872,7 @@ async function deleteTxn(txnId) {
         original_date: txn.date,
         emp_name: txn.user,
         deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
-        employee_id: currentEmployee ? currentEmployee.id : null,
+        employee_id: (currentEmployee && currentEmployee.id > 0) ? currentEmployee.id : null,
         branch: selectedLocation || null,
         deleted_at: new Date().toISOString(),
       }]);
@@ -1952,7 +1952,7 @@ async function saveTxnEdit(e) {
       old_qty: oldTxn.qty,
       new_qty: newQty,
       edited_by: currentEmployee ? currentEmployee.name : 'Unknown',
-      employee_id: currentEmployee ? currentEmployee.id : null,
+      employee_id: (currentEmployee && currentEmployee.id > 0) ? currentEmployee.id : null,
       branch: selectedLocation || null,
       edited_at: new Date().toISOString(),
     }]);
@@ -2717,7 +2717,7 @@ function closeEntryDateModal() {
   document.getElementById('entry-date-modal-overlay').classList.add('hidden');
 }
 
-function confirmEntryWithDate() {
+async function confirmEntryWithDate() {
   const dateValue = calendarSelectedDate;
   if (!dateValue) { showToast('Please select a date', 'delete'); return; }
   // Build local datetime string (NOT UTC) so date.slice(0,10) matches the selected date
@@ -2727,7 +2727,7 @@ function confirmEntryWithDate() {
     String(now.getSeconds()).padStart(2, '0');
   const localISO = dateValue + 'T' + timeStr;
   closeEntryDateModal();
-  executeEntry(localISO);
+  await executeEntry(localISO);
 }
 
 async function executeEntry(selectedDateISO) {
@@ -2780,7 +2780,7 @@ async function executeEntry(selectedDateISO) {
       unit: item.unit || 'No',
       rate: item.rate || null,
       gst: item.gst || null,
-      employee_id: currentEmployee ? currentEmployee.id : null,
+      employee_id: (currentEmployee && currentEmployee.id > 0) ? currentEmployee.id : null,
       emp_name: user,
       location: selectedLocation || null,
       created_at: now,
@@ -2803,23 +2803,30 @@ async function executeEntry(selectedDateISO) {
   saveData(appData);
 
   // Save to Supabase via REST
+  let cloudSaved = true;
   if (supabaseRows.length > 0) {
     try {
       await supabaseInsert('stock_entries', supabaseRows);
     } catch (err) {
+      cloudSaved = false;
       console.error('Supabase save error:', err);
-      showToast('Saved locally. Cloud sync failed.', 'delete');
+      console.error('Payload that failed:', JSON.stringify(supabaseRows, null, 2));
+      showToast('Cloud sync failed: ' + err.message, 'delete');
     }
   }
 
   entryCart = {};
 
-  const typeLabel = entryType === 'in' ? 'Stock In' : 'Stock Out';
-  showToast(`${typeLabel} recorded for ${itemIds.length} item${itemIds.length !== 1 ? 's' : ''}`);
+  if (cloudSaved) {
+    const typeLabel = entryType === 'in' ? 'Stock In' : 'Stock Out';
+    showToast(`${typeLabel} recorded for ${itemIds.length} item${itemIds.length !== 1 ? 's' : ''}`);
+  }
 
-  // Reload fresh data from Supabase to stay in sync
-  await loadFromSupabase();
-  saveData(appData);
+  // Reload fresh data from Supabase to stay in sync (only if cloud save succeeded)
+  if (cloudSaved) {
+    await loadFromSupabase();
+    saveData(appData);
+  }
 
   navigateTo('transactions');
 }
