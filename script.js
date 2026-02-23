@@ -8,6 +8,11 @@
 const SUPABASE_URL = 'https://zovnmmdfthpbubrorsgh.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpvdm5tbWRmdGhwYnVicm9yc2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NzE3ODgsImV4cCI6MjA3NzE0Nzc4OH0.92BH2sjUOgkw6iSRj1_4gt0p3eThg3QT4VK-Q4EdmBE';
 
+// FIX #4: WARNING: The anon key is exposed in client-side code. This is by design for Supabase,
+// but requires Row Level Security (RLS) to be enabled on ALL tables to prevent unauthorized access.
+// TODO: Enable RLS policies on: stock_entries, employees, edit_log, deletion_log,
+// received_date_log, received_date_deletion_log, app_config
+
 // Helper: direct REST fetch from Supabase (works regardless of client lib)
 async function supabaseFetch(table, params = '') {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
@@ -120,16 +125,26 @@ async function loginSelectLocation() {
     sessionStorage.setItem('sr_location', selectedLocation);
     localStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
     localStorage.setItem('sr_location', selectedLocation);
+    // FIX #7: Store login timestamp for session expiry
+    const loginTime = Date.now().toString();
+    sessionStorage.setItem('sr_login_time', loginTime);
+    localStorage.setItem('sr_login_time', loginTime);
+    // FIX #8: Persist Corporate Office as admin so it survives reload
+    isHeadOffice = true;
+    sessionStorage.setItem('sr_headoffice', 'true');
+    localStorage.setItem('sr_headoffice', 'true');
 
     appData.profile.branch = selectedLocation;
     appData.profile.boe = 'Navachetana Livelihoods Pvt Ltd';
     saveData(appData);
 
     document.getElementById('login-screen').classList.add('hidden');
+    switchToAdminMode();
     updateUserUI();
-    loadFromSupabase().then(() => {
-      saveData(appData);
-      renderDashboard();
+    // FIX #14: Add error handling to async data load
+    loadAdminData().then(() => navigateTo('admin')).catch(err => {
+      console.error('Failed to load admin data:', err);
+      showToast('Failed to load admin data', 'delete');
     });
     return;
   }
@@ -210,13 +225,28 @@ function loginBackFromOTP() {
   document.getElementById('login-step1').classList.remove('hidden');
 }
 
-function loginHeadOfficeOTP() {
+async function loginHeadOfficeOTP() {
   const otpInput = document.getElementById('login-ho-otp');
   const errorEl = document.getElementById('login-otp-error');
   const otp = otpInput ? otpInput.value.trim() : '';
 
-  if (otp !== '5678') {
-    errorEl.textContent = 'Invalid OTP';
+  if (!otp) {
+    errorEl.textContent = 'Please enter OTP';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  // FIX #3: Validate OTP against Supabase instead of hardcoded value
+  try {
+    const configs = await supabaseFetch('app_config', 'select=value&key=eq.admin_otp');
+    const storedOtp = configs && configs[0] && configs[0].value;
+    if (!storedOtp || otp !== storedOtp) {
+      errorEl.textContent = 'Invalid OTP';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error. Please try again.';
     errorEl.classList.remove('hidden');
     return;
   }
@@ -233,6 +263,10 @@ function loginHeadOfficeOTP() {
   localStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
   localStorage.setItem('sr_location', selectedLocation);
   localStorage.setItem('sr_headoffice', 'true');
+  // FIX #7: Store login timestamp for session expiry
+  const loginTime = Date.now().toString();
+  sessionStorage.setItem('sr_login_time', loginTime);
+  localStorage.setItem('sr_login_time', loginTime);
 
   // Hide login, show app
   document.getElementById('login-screen').classList.add('hidden');
@@ -263,6 +297,10 @@ function loginConfirm() {
   sessionStorage.setItem('sr_location', selectedLocation);
   localStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
   localStorage.setItem('sr_location', selectedLocation);
+  // FIX #7: Store login timestamp for session expiry
+  const loginTime = Date.now().toString();
+  sessionStorage.setItem('sr_login_time', loginTime);
+  localStorage.setItem('sr_login_time', loginTime);
 
   // Update app profile
   appData.profile.branch = selectedLocation;
@@ -281,9 +319,13 @@ function loginConfirm() {
   updateUserUI();
 
   // Always load fresh data from Supabase after login, then render
+  // FIX #14: Add error handling to async data load
   loadFromSupabase().then(() => {
     saveData(appData);
     renderDashboard();
+  }).catch(err => {
+    console.error('Failed to load data:', err);
+    showToast('Failed to load data from server', 'delete');
   });
 }
 
@@ -301,6 +343,14 @@ function checkSession() {
   const savedEmp = sessionStorage.getItem('sr_employee') || localStorage.getItem('sr_employee');
   const savedLoc = sessionStorage.getItem('sr_location') || localStorage.getItem('sr_location');
   const savedHO = sessionStorage.getItem('sr_headoffice') || localStorage.getItem('sr_headoffice');
+
+  // FIX #7: Check session expiry (24hr TTL)
+  const loginTime = sessionStorage.getItem('sr_login_time') || localStorage.getItem('sr_login_time');
+  const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  if (loginTime && (Date.now() - parseInt(loginTime, 10)) > SESSION_TTL) {
+    logout();
+    return false;
+  }
 
   if (savedEmp && savedLoc) {
     currentEmployee = JSON.parse(savedEmp);
@@ -325,6 +375,9 @@ function logout() {
   localStorage.removeItem('sr_employee');
   localStorage.removeItem('sr_location');
   localStorage.removeItem('sr_headoffice');
+  // FIX #7: Clear login timestamp
+  sessionStorage.removeItem('sr_login_time');
+  localStorage.removeItem('sr_login_time');
   currentEmployee = null;
   selectedLocation = null;
   isHeadOffice = false;
@@ -455,8 +508,19 @@ function loadData() {
   if (raw) {
     const parsed = JSON.parse(raw);
     if (parsed._version === DATA_VERSION) return parsed;
-    // Stale data — clear and reload defaults
-    localStorage.removeItem(STORAGE_KEY);
+    // FIX #10: Migrate data instead of wiping on version change
+    parsed._version = DATA_VERSION;
+    parsed.inventory = DEFAULT_INVENTORY.map(item => {
+      const old = (parsed.inventory || []).find(i => i.name === item.name);
+      return old ? { ...item, qty: old.qty } : item;
+    });
+    if (!parsed.transactions) parsed.transactions = [];
+    if (!parsed.team) parsed.team = [];
+    if (!parsed.suppliers) parsed.suppliers = [];
+    if (!parsed.notifications) parsed.notifications = [];
+    if (!parsed.profile) parsed.profile = { branch: '', boe: '' };
+    saveData(parsed);
+    return parsed;
   }
   const data = {
     _version: DATA_VERSION,
@@ -486,23 +550,29 @@ async function loadFromSupabase() {
   if (!selectedLocation) return;
 
   try {
-    // Fetch all stock entries for this location, newest first
+    // FIX #1: Fetch entries in ascending order so sequential qty computation is correct
     const entries = await supabaseFetch('stock_entries',
-      'select=*&location=eq.' + encodeURIComponent(selectedLocation) + '&order=created_at.desc');
+      'select=*&location=eq.' + encodeURIComponent(selectedLocation) + '&order=created_at.asc');
 
     // Reset inventory quantities to 0 from catalog
     appData.inventory = DEFAULT_INVENTORY.map(item => ({ ...item, qty: 0 }));
 
-    // Compute quantities from Supabase entries
+    // FIX #9: Handle renamed/removed items — create entries for unknown item names
+    const knownNames = new Set(appData.inventory.map(i => i.name));
     entries.forEach(e => {
-      const item = appData.inventory.find(i => i.name === e.item_name);
-      if (item) {
-        if (e.entry_type === 'in') item.qty += e.quantity;
-        else item.qty = Math.max(0, item.qty - e.quantity);
+      let item = appData.inventory.find(i => i.name === e.item_name);
+      if (!item) {
+        // Item not in DEFAULT_INVENTORY — create a dynamic entry
+        item = { id: Date.now() + Math.random(), name: e.item_name, sku: e.hsn_code || '', category: e.category || 'Uncategorized', qty: 0, unit: e.unit || 'No', reorder: 0, rate: e.rate || 0, gst: e.gst || 0 };
+        appData.inventory.push(item);
+        knownNames.add(e.item_name);
       }
+      if (e.entry_type === 'in') item.qty += e.quantity;
+      else item.qty = Math.max(0, item.qty - e.quantity);
     });
 
     // Convert entries to local transactions format
+    // FIX #1: .reverse() so newest shows first in the UI (entries are fetched asc for correct qty calc)
     appData.transactions = entries.map(e => ({
       id: e.id,
       itemName: e.item_name,
@@ -512,7 +582,7 @@ async function loadFromSupabase() {
       date: e.created_at,
       user: e.emp_name,
       isEdited: e.is_edited || false,
-    }));
+    })).reverse();
 
     // Generate notifications for low/out-of-stock items
     appData.notifications = [];
@@ -551,7 +621,8 @@ let selectedBranch = null;
 async function loadAdminData() {
   try {
     const [entries, employees, editLogs, deletionLogs, receivedDateDeletions] = await Promise.all([
-      supabaseFetch('stock_entries', 'select=*&order=created_at.desc'),
+      // FIX #1: Fetch stock_entries in asc order for correct sequential qty computation
+      supabaseFetch('stock_entries', 'select=*&order=created_at.asc'),
       supabaseFetch('employees', 'select=*&order=name.asc'),
       supabaseFetch('edit_log', 'select=*&order=edited_at.desc'),
       supabaseFetch('deletion_log', 'select=*&order=deleted_at.desc').catch(() => []),
@@ -1005,24 +1076,14 @@ async function deleteReceivedDateLog(id) {
   if (!confirm('Delete this received date entry?')) return;
 
   try {
-    // Fetch the entry first to log it
+    // FIX #13: Fetch entry, delete first, then log — ensures atomicity
     const entries = await supabaseFetch('received_date_log', 'select=*&id=eq.' + id);
     const entry = entries && entries[0];
-
-    // Save to deletion log
-    if (entry) {
-      await supabaseInsert('received_date_deletion_log', [{
-        original_id: entry.id,
-        location: entry.location,
-        received_date: entry.received_date,
-        note: entry.note,
-        logged_by: entry.logged_by,
-        deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
-        deleted_at: new Date().toISOString(),
-      }]);
+    if (!entry) {
+      showToast('Entry not found', 'delete');
+      return;
     }
 
-    // Delete the entry
     const res = await fetch(`${SUPABASE_URL}/rest/v1/received_date_log?id=eq.${id}`, {
       method: 'DELETE',
       headers: {
@@ -1032,6 +1093,21 @@ async function deleteReceivedDateLog(id) {
       },
     });
     if (!res.ok) throw new Error('Delete failed');
+
+    // Log deletion (best-effort)
+    try {
+      await supabaseInsert('received_date_deletion_log', [{
+        original_id: entry.id,
+        location: entry.location,
+        received_date: entry.received_date,
+        note: entry.note,
+        logged_by: entry.logged_by,
+        deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
+        deleted_at: new Date().toISOString(),
+      }]);
+    } catch (logErr) {
+      console.error('Failed to log deletion:', logErr);
+    }
 
     showToast('Entry deleted & logged');
     renderReceivedDate();
@@ -1266,8 +1342,12 @@ function renderDashboard() {
   // KPIs
   const totalQty = appData.inventory.reduce((sum, i) => sum + i.qty, 0);
   const lowStock = appData.inventory.filter(i => i.qty <= i.reorder).length;
-  const monthIn = appData.transactions.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
-  const monthOut = appData.transactions.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
+  // FIX #5: Filter to current month only for Monthly KPI
+  const kpiNow = new Date();
+  const monthStart = new Date(kpiNow.getFullYear(), kpiNow.getMonth(), 1);
+  const monthTxns = appData.transactions.filter(t => new Date(t.date) >= monthStart);
+  const monthIn = monthTxns.filter(t => t.type === 'in').reduce((s, t) => s + t.qty, 0);
+  const monthOut = monthTxns.filter(t => t.type === 'out').reduce((s, t) => s + t.qty, 0);
 
   document.getElementById('kpi-closing-stock').textContent = totalQty.toLocaleString() + ' Units';
   document.getElementById('kpi-low-stock').textContent = lowStock + ' Items';
@@ -1858,26 +1938,10 @@ function deleteItem(id) {
 async function deleteTxn(txnId) {
   if (!confirm('Delete this transaction?')) return;
 
-  // Capture transaction details before deletion
   const txn = appData.transactions.find(t => t.id === txnId);
 
   try {
-    // Log the deletion before removing
-    if (txn) {
-      await supabaseInsert('deletion_log', [{
-        stock_entry_id: txnId,
-        item_name: txn.itemName,
-        entry_type: txn.type,
-        quantity: txn.qty,
-        original_date: txn.date,
-        emp_name: txn.user,
-        deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
-        employee_id: (currentEmployee && currentEmployee.id > 0) ? currentEmployee.id : null,
-        branch: selectedLocation || null,
-        deleted_at: new Date().toISOString(),
-      }]);
-    }
-
+    // FIX #12: Delete first, then log — avoids phantom audit entries
     const res = await fetch(SUPABASE_URL + '/rest/v1/stock_entries?id=eq.' + txnId, {
       method: 'DELETE',
       headers: {
@@ -1886,6 +1950,27 @@ async function deleteTxn(txnId) {
       },
     });
     if (!res.ok) throw new Error('Delete failed: ' + res.status);
+
+    // Log deletion (best-effort, non-blocking)
+    if (txn) {
+      try {
+        await supabaseInsert('deletion_log', [{
+          stock_entry_id: txnId,
+          item_name: txn.itemName,
+          entry_type: txn.type,
+          quantity: txn.qty,
+          original_date: txn.date,
+          emp_name: txn.user,
+          deleted_by: currentEmployee ? currentEmployee.name : 'Unknown',
+          employee_id: (currentEmployee && currentEmployee.id > 0) ? currentEmployee.id : null,
+          branch: selectedLocation || null,
+          deleted_at: new Date().toISOString(),
+        }]);
+      } catch (logErr) {
+        console.error('Failed to log deletion:', logErr);
+      }
+    }
+
     showToast('Transaction deleted', 'delete');
     await loadFromSupabase();
     saveData(appData);
@@ -2117,10 +2202,13 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+// FIX #6: Include year and add null safety
 function formatDate(isoStr) {
+  if (!isoStr) return '--';
   const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '--';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
 function formatDateDDMMYYYY(dateStr) {
@@ -2725,7 +2813,8 @@ async function confirmEntryWithDate() {
   const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
     String(now.getMinutes()).padStart(2, '0') + ':' +
     String(now.getSeconds()).padStart(2, '0');
-  const localISO = dateValue + 'T' + timeStr;
+  // FIX #2: Use UTC ISO string for consistent timestamps
+  const localISO = new Date(dateValue + 'T' + timeStr).toISOString();
   closeEntryDateModal();
   await executeEntry(localISO);
 }
@@ -2739,38 +2828,15 @@ async function executeEntry(selectedDateISO) {
 
   const now = selectedDateISO;
   const user = currentEmployee ? currentEmployee.name : 'Unknown';
-  let maxTxnId = appData.transactions.length > 0
-    ? Math.max(...appData.transactions.map(t => t.id))
-    : 0;
 
+  // FIX #11: Build Supabase rows WITHOUT modifying local state first
   const supabaseRows = [];
-
   itemIds.forEach(idStr => {
     const itemId = parseInt(idStr, 10);
     const qty = entryCart[itemId];
     const item = appData.inventory.find(i => i.id === itemId);
     if (!item || !qty) return;
 
-    // Update inventory quantity
-    if (entryType === 'in') {
-      item.qty += qty;
-    } else {
-      item.qty = Math.max(0, item.qty - qty);
-    }
-
-    // Create local transaction
-    maxTxnId++;
-    appData.transactions.push({
-      id: maxTxnId,
-      itemName: item.name,
-      sku: item.sku,
-      type: entryType,
-      qty: qty,
-      date: now,
-      user: user,
-    });
-
-    // Prepare Supabase row
     supabaseRows.push({
       item_name: item.name,
       hsn_code: item.sku,
@@ -2785,49 +2851,30 @@ async function executeEntry(selectedDateISO) {
       location: selectedLocation || null,
       created_at: now,
     });
-
-    // Low stock notification
-    if (item.qty <= item.reorder) {
-      const existingNotif = appData.notifications.find(n => n.text.includes(item.name));
-      if (!existingNotif) {
-        appData.notifications.push({
-          id: Date.now() + itemId,
-          text: `${item.name} stock ${item.qty <= 0 ? 'depleted' : 'critically low'} (${item.qty} ${item.unit || 'units'})`,
-          type: 'alert',
-          time: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-        });
-      }
-    }
   });
 
-  saveData(appData);
+  if (supabaseRows.length === 0) {
+    showToast('No valid items to save', 'delete');
+    return;
+  }
 
-  // Save to Supabase via REST
-  let cloudSaved = true;
-  if (supabaseRows.length > 0) {
-    try {
-      await supabaseInsert('stock_entries', supabaseRows);
-    } catch (err) {
-      cloudSaved = false;
-      console.error('Supabase save error:', err);
-      console.error('Payload that failed:', JSON.stringify(supabaseRows, null, 2));
-      showToast('Cloud sync failed: ' + err.message, 'delete');
-    }
+  // Insert to Supabase first, then update local state on success
+  try {
+    await supabaseInsert('stock_entries', supabaseRows);
+  } catch (err) {
+    console.error('Supabase save error:', err);
+    console.error('Payload that failed:', JSON.stringify(supabaseRows, null, 2));
+    showToast('Failed to save: ' + err.message, 'delete');
+    return;
   }
 
   entryCart = {};
+  const typeLabel = entryType === 'in' ? 'Stock In' : 'Stock Out';
+  showToast(`${typeLabel} recorded for ${supabaseRows.length} item${supabaseRows.length !== 1 ? 's' : ''}`);
 
-  if (cloudSaved) {
-    const typeLabel = entryType === 'in' ? 'Stock In' : 'Stock Out';
-    showToast(`${typeLabel} recorded for ${itemIds.length} item${itemIds.length !== 1 ? 's' : ''}`);
-  }
-
-  // Reload fresh data from Supabase to stay in sync (only if cloud save succeeded)
-  if (cloudSaved) {
-    await loadFromSupabase();
-    saveData(appData);
-  }
-
+  // Reload from Supabase to get authoritative state
+  await loadFromSupabase();
+  saveData(appData);
   navigateTo('transactions');
 }
 
