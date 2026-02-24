@@ -132,7 +132,9 @@ async function loginSelectLocation() {
 
   // Head Office / Corporate Office → no BOE, skip profile selection
   if (location === 'Head Office' || location === 'Corporate Office') {
-    currentEmployee = { id: 0, emp_id: location === 'Head Office' ? 'HO-USER' : 'CO-USER', name: location, role: 'Staff', mobile: '', location: location };
+    currentEmployee = location === 'Head Office'
+      ? { id: 0, emp_id: 'HO-USER', name: 'Santosh', role: 'Admin Executive', mobile: '', location: location }
+      : { id: 0, emp_id: 'CO-USER', name: 'Chetan', role: 'Admin Executive', mobile: '', location: location };
 
     sessionStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
     sessionStorage.setItem('sr_location', selectedLocation);
@@ -265,7 +267,7 @@ async function loginHeadOfficeOTP() {
   errorEl.classList.add('hidden');
   isHeadOffice = true;
   selectedLocation = 'Head Office';
-  currentEmployee = { id: 0, emp_id: 'HO-ADMIN', name: 'Admin', role: 'Admin', mobile: '', location: 'Head Office' };
+  currentEmployee = { id: 0, emp_id: 'HO-ADMIN', name: 'Santosh', role: 'Admin', mobile: '', location: 'Head Office' };
 
   // Save session
   sessionStorage.setItem('sr_employee', JSON.stringify(currentEmployee));
