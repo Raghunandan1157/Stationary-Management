@@ -1280,6 +1280,249 @@ function renderDeleteLog() {
   }
 }
 
+// --- BRANCHES PAGE ---
+
+function timeAgo(date) {
+  const now = new Date();
+  const d = new Date(date);
+  const diffMs = now - d;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffSec < 60) return 'just now';
+  if (diffMin < 60) return diffMin + ' min ago';
+  if (diffHr < 24) return diffHr + (diffHr === 1 ? ' hour ago' : ' hours ago');
+  if (diffDay < 30) return diffDay + (diffDay === 1 ? ' day ago' : ' days ago');
+  return d.toLocaleDateString();
+}
+
+async function renderBranches() {
+  const entries = adminData.entries;
+  const employees = adminData.employees;
+
+  // Get filter values
+  const searchText = (document.getElementById('branches-search')?.value || '').toLowerCase().trim();
+  const statusFilter = document.getElementById('branches-status-filter')?.value || 'all';
+  const sourceFilter = document.getElementById('branches-source-filter')?.value || 'entries';
+
+  // Get unique branches (exclude Head Office)
+  const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
+  const branchesFromEmployees = employees.map(e => e.location).filter(Boolean);
+  const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => b !== 'Head Office').sort();
+
+  // Fetch received_date_log on demand if needed
+  if ((sourceFilter === 'received' || sourceFilter === 'both') && !adminData.receivedDateLogs) {
+    try {
+      adminData.receivedDateLogs = await supabaseFetch('received_date_log', 'select=*&order=created_at.desc');
+    } catch (e) {
+      console.error('Failed to fetch received_date_log:', e);
+      adminData.receivedDateLogs = [];
+    }
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  // Compute last update per branch
+  const branchData = allBranches.map(branch => {
+    let lastUpdate = null;
+
+    if (sourceFilter === 'entries' || sourceFilter === 'both') {
+      const branchEntries = entries.filter(e => e.location === branch);
+      const maxEntry = branchEntries.reduce((max, e) => {
+        const d = new Date(e.created_at);
+        return d > max ? d : max;
+      }, new Date(0));
+      if (branchEntries.length > 0 && maxEntry > new Date(0)) {
+        lastUpdate = maxEntry;
+      }
+    }
+
+    if (sourceFilter === 'received' || sourceFilter === 'both') {
+      const rdLogs = (adminData.receivedDateLogs || []).filter(r => r.location === branch);
+      const maxRd = rdLogs.reduce((max, r) => {
+        const d = new Date(r.created_at);
+        return d > max ? d : max;
+      }, new Date(0));
+      if (rdLogs.length > 0 && maxRd > new Date(0)) {
+        if (!lastUpdate || maxRd > lastUpdate) lastUpdate = maxRd;
+      }
+    }
+
+    const updatedToday = lastUpdate && lastUpdate.toISOString().slice(0, 10) === todayStr;
+    const inactive = !lastUpdate || lastUpdate < sevenDaysAgo;
+
+    let status = 'not-updated';
+    if (updatedToday) status = 'updated';
+    else if (inactive) status = 'inactive';
+
+    const branchEmployees = employees.filter(e => e.location === branch);
+    // Sort BOE first
+    branchEmployees.sort((a, b) => {
+      const aIsBoe = (a.role || '').toLowerCase().includes('boe') ? 0 : 1;
+      const bIsBoe = (b.role || '').toLowerCase().includes('boe') ? 0 : 1;
+      return aIsBoe - bIsBoe || a.name.localeCompare(b.name);
+    });
+
+    return { branch, lastUpdate, status, updatedToday, inactive, employees: branchEmployees };
+  });
+
+  // Sort: no updates first, then oldest update first (least recent → most recent)
+  branchData.sort((a, b) => {
+    if (!a.lastUpdate && !b.lastUpdate) return a.branch.localeCompare(b.branch);
+    if (!a.lastUpdate) return -1;
+    if (!b.lastUpdate) return 1;
+    return a.lastUpdate - b.lastUpdate;
+  });
+
+  // Apply filters
+  let filtered = branchData;
+  if (searchText) {
+    filtered = filtered.filter(b => b.branch.toLowerCase().includes(searchText));
+  }
+  if (statusFilter !== 'all') {
+    filtered = filtered.filter(b => b.status === statusFilter);
+  }
+
+  // KPIs (based on unfiltered data)
+  const totalBranches = branchData.length;
+  const updatedCount = branchData.filter(b => b.updatedToday).length;
+  const notUpdatedCount = totalBranches - updatedCount;
+  document.getElementById('branches-kpi-total').textContent = totalBranches;
+  document.getElementById('branches-kpi-updated').textContent = updatedCount;
+  document.getElementById('branches-kpi-not-updated').textContent = notUpdatedCount;
+
+  // Group into time buckets
+  const now = new Date();
+  const daysAgo = d => Math.floor((now - new Date(d)) / 86400000);
+  const buckets = [
+    { key: 'inactive', label: 'Inactive / No Updates', icon: 'error', color: 'red', branches: [] },
+    { key: 'd15', label: 'Last 15 Days', icon: 'schedule', color: 'amber', branches: [] },
+    { key: 'd10', label: 'Last 10 Days', icon: 'schedule', color: 'orange', branches: [] },
+    { key: 'd5', label: 'Last 5 Days', icon: 'update', color: 'blue', branches: [] },
+    { key: 'today', label: 'Updated Today', icon: 'check_circle', color: 'green', branches: [] },
+  ];
+
+  filtered.forEach(b => {
+    if (!b.lastUpdate) { buckets[0].branches.push(b); return; }
+    const d = daysAgo(b.lastUpdate);
+    if (d > 15) buckets[0].branches.push(b);       // inactive / very old
+    else if (d > 10) buckets[1].branches.push(b);   // 11-15 days
+    else if (d > 5) buckets[2].branches.push(b);    // 6-10 days
+    else if (d >= 1) buckets[3].branches.push(b);   // 1-5 days
+    else buckets[4].branches.push(b);               // today
+  });
+
+  // Render chart
+  const chartEl = document.getElementById('branches-chart');
+  const maxBucket = Math.max(...buckets.map(bk => bk.branches.length), 1);
+  const barColors = { red: 'bg-red-500', amber: 'bg-amber-500', orange: 'bg-orange-500', blue: 'bg-blue-500', green: 'bg-green-500' };
+  const barBgs = { red: 'bg-red-100 dark:bg-red-900/20', amber: 'bg-amber-100 dark:bg-amber-900/20', orange: 'bg-orange-100 dark:bg-orange-900/20', blue: 'bg-blue-100 dark:bg-blue-900/20', green: 'bg-green-100 dark:bg-green-900/20' };
+  chartEl.innerHTML = buckets.map(bk => {
+    const pct = Math.round((bk.branches.length / maxBucket) * 100);
+    return `
+      <div class="flex items-center gap-3">
+        <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 w-32 text-right truncate flex-shrink-0">${bk.label}</span>
+        <div class="flex-1 h-6 rounded-md ${barBgs[bk.color]} overflow-hidden">
+          <div class="h-full ${barColors[bk.color]} rounded-md transition-all duration-500 flex items-center justify-end px-2" style="width:${bk.branches.length > 0 ? Math.max(pct, 8) : 0}%">
+            ${bk.branches.length > 0 ? `<span class="text-[10px] font-bold text-white">${bk.branches.length}</span>` : ''}
+          </div>
+        </div>
+        ${bk.branches.length === 0 ? '<span class="text-[10px] text-slate-400 w-4">0</span>' : '<span class="w-4"></span>'}
+      </div>`;
+  }).join('');
+
+  // Render columns
+  const listEl = document.getElementById('branches-list');
+  const activeBuckets = buckets.filter(bk => bk.branches.length > 0);
+
+  if (activeBuckets.length === 0) {
+    listEl.innerHTML = `<div class="flex flex-col items-center text-slate-400 dark:text-slate-500 py-16"><span class="material-symbols-outlined text-5xl mb-3">apartment</span><p class="text-sm font-medium">No branches found</p></div>`;
+    return;
+  }
+
+  const colorMap = {
+    red: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' },
+    amber: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
+    orange: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
+    blue: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', dot: 'bg-blue-500' },
+    green: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' },
+  };
+
+  function renderBranchEmpRow(emp) {
+    const isBoe = (emp.role || '').toLowerCase().includes('boe');
+    const bgClass = isBoe ? 'bg-primary/5 dark:bg-primary/10' : '';
+    const boeBadge = isBoe ? '<span class="px-1 py-0.5 rounded text-[8px] font-bold uppercase bg-primary/10 text-primary">BOE</span>' : '';
+    const phone = emp.mobile
+      ? '<a href="tel:' + escHtml(emp.mobile) + '" class="inline-flex items-center gap-1 text-primary hover:underline text-[11px] font-medium" onclick="event.stopPropagation()"><span class="material-symbols-outlined" style="font-size:11px">call</span>' + escHtml(emp.mobile) + '</a>'
+      : '<span class="text-slate-400 text-[11px]">No phone</span>';
+    return '<div class="flex items-center justify-between px-3 py-1.5 ' + bgClass + '">' +
+      '<div class="flex items-center gap-1.5 min-w-0">' +
+        '<span class="text-xs font-medium text-slate-800 dark:text-white truncate">' + escHtml(emp.name) + '</span>' +
+        boeBadge +
+      '</div>' +
+      '<div class="flex-shrink-0 ml-2">' + phone + '</div>' +
+    '</div>';
+  }
+
+  function renderBranchCard(b) {
+    const lastStr = b.lastUpdate
+      ? '<span class="text-slate-500 dark:text-slate-400">' + timeAgo(b.lastUpdate) + '</span>'
+      : '<span class="text-slate-400">No updates</span>';
+    const employeeRows = b.employees.length > 0
+      ? b.employees.map(renderBranchEmpRow).join('')
+      : '<div class="px-3 py-2 text-slate-400 text-xs text-center">No employees</div>';
+
+    return '<div class="border-b border-slate-100 dark:border-slate-800 last:border-b-0">' +
+      '<div class="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors select-none" onclick="toggleBranchContacts(this)">' +
+        '<div class="size-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">' +
+          '<span class="material-symbols-outlined text-primary text-sm">location_on</span>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<span class="text-xs font-bold text-slate-800 dark:text-white truncate block">' + escHtml(b.branch) + '</span>' +
+          '<span class="text-[11px] block mt-0.5">' + lastStr + '</span>' +
+        '</div>' +
+        '<div class="flex items-center gap-1 flex-shrink-0">' +
+          '<span class="text-[10px] text-slate-400">' + b.employees.length + '</span>' +
+          '<span class="material-symbols-outlined text-slate-400 text-sm branch-chevron transition-transform duration-200">expand_more</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="branch-contacts hidden divide-y divide-slate-50 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-800/20">' +
+        employeeRows +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderBucketColumn(bk) {
+    const c = colorMap[bk.color];
+    return '<div class="flex flex-col">' +
+      '<div class="flex items-center gap-2 mb-3 px-1">' +
+        '<span class="size-2 rounded-full ' + c.dot + '"></span>' +
+        '<h3 class="text-xs font-bold uppercase tracking-wider ' + c.text + '">' + bk.label + '</h3>' +
+        '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full ' + c.bg + ' ' + c.text + '">' + bk.branches.length + '</span>' +
+      '</div>' +
+      '<div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex-1">' +
+        bk.branches.map(renderBranchCard).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  listEl.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">' +
+    activeBuckets.map(renderBucketColumn).join('') +
+  '</div>';
+}
+
+function toggleBranchContacts(headerEl) {
+  const contacts = headerEl.nextElementSibling;
+  const chevron = headerEl.querySelector('.branch-chevron');
+  const isOpen = !contacts.classList.contains('hidden');
+  contacts.classList.toggle('hidden');
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
 // --- NEW ENTRY STATE ---
 
 let entryCart = {};       // maps itemId → selected quantity
@@ -1348,6 +1591,7 @@ function renderPage(page) {
     case 'admin': renderAdminDashboard(); break;
     case 'editlog': renderEditLog(); break;
     case 'deletelog': renderDeleteLog(); break;
+    case 'branches': loadAdminData().then(() => renderBranches()); break;
     case 'branchdetail': renderBranchDetail(); break;
     case 'closingstock': renderClosingStock(); break;
     case 'receiveddate': renderReceivedDate(); break;

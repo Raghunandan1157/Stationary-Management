@@ -185,6 +185,10 @@
         <span class="material-symbols-outlined">delete_sweep</span>
         Deleted Log
       </a>
+      <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="javascript:void(0)" data-page="branches">
+        <span class="material-symbols-outlined">apartment</span>
+        Branches
+      </a>
       <a class="nav-link-admin flex items-center gap-3 px-4 py-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="javascript:void(0)" data-page="reports">
         <span class="material-symbols-outlined">bar_chart</span>
         Reports
@@ -793,6 +797,97 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ===== BRANCHES PAGE (Admin) ===== -->
+      <div id="page-branches" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Branches</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Monitor branch activity and employee contacts</p>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded-full text-xs font-bold uppercase tracking-wider">
+            <span class="material-symbols-outlined text-sm">shield</span>
+            Admin
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+          <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-slate-400">search</span>
+            <input id="branches-search" type="text" placeholder="Search branches..." oninput="renderBranches()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full placeholder-slate-400"/>
+          </div>
+          <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-amber-500">filter_list</span>
+            <div class="flex flex-col gap-0.5 flex-1">
+              <label for="branches-status-filter" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Update Status</label>
+              <select id="branches-status-filter" onchange="renderBranches()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full">
+                <option value="all">All</option>
+                <option value="updated">Updated Today</option>
+                <option value="not-updated">Not Updated Today</option>
+                <option value="inactive">Inactive (7+ days)</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 bg-white dark:bg-[#1c2631] border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 flex-1">
+            <span class="material-symbols-outlined text-primary">source</span>
+            <div class="flex flex-col gap-0.5 flex-1">
+              <label for="branches-source-filter" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Update Source</label>
+              <select id="branches-source-filter" onchange="renderBranches()" class="bg-transparent border-none p-0 text-sm font-semibold text-slate-800 dark:text-white focus:ring-0 w-full">
+                <option value="entries">Stock Entries</option>
+                <option value="received">Received Dates</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-blue-100 dark:bg-blue-900/30 text-primary rounded-lg">
+                <span class="material-symbols-outlined">apartment</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Branches</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="branches-kpi-total">--</h3>
+          </div>
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                <span class="material-symbols-outlined">check_circle</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Updated Today</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="branches-kpi-updated">--</h3>
+          </div>
+          <div class="bg-white dark:bg-[#1c2631] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <span class="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+                <span class="material-symbols-outlined">pending</span>
+              </span>
+            </div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Not Updated</p>
+            <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1" id="branches-kpi-not-updated">--</h3>
+          </div>
+        </div>
+
+        <!-- Branch Activity Chart -->
+        <div class="bg-white dark:bg-[#1c2631] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 mb-8">
+          <h4 class="text-sm font-bold text-slate-800 dark:text-white mb-4">Branch Activity Overview</h4>
+          <div id="branches-chart" class="space-y-3">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Branch Cards -->
+        <div id="branches-list" class="space-y-4">
+          <div class="text-center text-slate-400 py-8">Loading...</div>
         </div>
       </div>
 
