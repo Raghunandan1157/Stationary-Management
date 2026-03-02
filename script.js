@@ -1515,6 +1515,184 @@ async function renderBranches() {
   '</div>';
 }
 
+// Branch mapping: Region → District → BranchName (from master data)
+const BRANCH_REGION_MAP = [
+  {r:"ANDRA PRADESH",d:"KADAPA",b:"BUDWAL"},{r:"ANDRA PRADESH",d:"KADAPA",b:"DHARMAVARAM"},{r:"ANDRA PRADESH",d:"KADAPA",b:"KADAPA"},{r:"ANDRA PRADESH",d:"KADAPA",b:"KADIRI"},
+  {r:"DHARWAD",d:"BADAMI",b:"BADAMI"},{r:"DHARWAD",d:"BADAMI",b:"GAJENDRAGAD"},{r:"DHARWAD",d:"BADAMI",b:"NARAGUNDA"},{r:"DHARWAD",d:"BADAMI",b:"RAMDURGA"},
+  {r:"DHARWAD",d:"BALLARI",b:"BALLARI"},{r:"DHARWAD",d:"BALLARI",b:"KUDATHINI"},{r:"DHARWAD",d:"BALLARI",b:"SANDURU"},{r:"DHARWAD",d:"BALLARI",b:"SIRUGUPPA"},
+  {r:"DHARWAD",d:"BELAGAVI",b:"BAILHONGAL"},{r:"DHARWAD",d:"BELAGAVI",b:"BELAGAVI"},{r:"DHARWAD",d:"BELAGAVI",b:"GOKAK"},{r:"DHARWAD",d:"BELAGAVI",b:"KITTUR"},{r:"DHARWAD",d:"BELAGAVI",b:"YARAGATTI"},
+  {r:"DHARWAD",d:"CHIKKODI",b:"ATHANI"},{r:"DHARWAD",d:"CHIKKODI",b:"CHIKKODI"},{r:"DHARWAD",d:"CHIKKODI",b:"MUDALAGI"},{r:"DHARWAD",d:"CHIKKODI",b:"NIPPANI"},
+  {r:"DHARWAD",d:"DAVANAGERE",b:"DAVANAGERE"},{r:"DHARWAD",d:"DAVANAGERE",b:"HARIHARA"},{r:"DHARWAD",d:"DAVANAGERE",b:"HONNALI"},{r:"DHARWAD",d:"DAVANAGERE",b:"SANTHEBENNURU"},
+  {r:"DHARWAD",d:"DHARWAD",b:"DHARWAD"},{r:"DHARWAD",d:"DHARWAD",b:"HUBLI"},{r:"DHARWAD",d:"DHARWAD",b:"HUBLI-2"},{r:"DHARWAD",d:"DHARWAD",b:"KALGHATGI"},
+  {r:"DHARWAD",d:"GADAG",b:"GADAG"},{r:"DHARWAD",d:"GADAG",b:"LAXMESHWAR"},{r:"DHARWAD",d:"GADAG",b:"MUNDARAGI"},
+  {r:"DHARWAD",d:"KUDLIGI",b:"HARAPANAHALLI"},{r:"DHARWAD",d:"KUDLIGI",b:"KHANAHOSAHALLI"},{r:"DHARWAD",d:"KUDLIGI",b:"KOTTURU"},{r:"DHARWAD",d:"KUDLIGI",b:"KUDLIGI"},
+  {r:"DHARWAD",d:"VIJAYANAGARA",b:"HAGARIBOMMANAHALLI"},{r:"DHARWAD",d:"VIJAYANAGARA",b:"HOSPET"},{r:"DHARWAD",d:"VIJAYANAGARA",b:"HUVENAHADAGALLI"},
+  {r:"KALABURAGI",d:"BAGALKOTE",b:"BAGALKOT"},
+  {r:"KALABURAGI",d:"BIDAR",b:"AURAD"},{r:"KALABURAGI",d:"BIDAR",b:"BHALKI"},{r:"KALABURAGI",d:"BIDAR",b:"BIDAR"},{r:"KALABURAGI",d:"BIDAR",b:"BIDAR-2"},
+  {r:"KALABURAGI",d:"HUMNABAD",b:"BASAVAKALYAN"},{r:"KALABURAGI",d:"HUMNABAD",b:"HULSOOR"},{r:"KALABURAGI",d:"HUMNABAD",b:"HUMNABAD"},{r:"KALABURAGI",d:"HUMNABAD",b:"KAMALAPURA"},
+  {r:"KALABURAGI",d:"INDI",b:"AFZALPUR"},{r:"KALABURAGI",d:"INDI",b:"ALMEL"},{r:"KALABURAGI",d:"INDI",b:"CHADCHAN"},{r:"KALABURAGI",d:"INDI",b:"INDI"},
+  {r:"KALABURAGI",d:"KALBURGI",b:"ALAND"},{r:"KALABURAGI",d:"KALBURGI",b:"JEVARGI"},{r:"KALABURAGI",d:"KALBURGI",b:"KALABURAGI"},{r:"KALABURAGI",d:"KALBURGI",b:"KALBURGI-2"},
+  {r:"KALABURAGI",d:"KUSHTAGI",b:"GANGAVATHI"},{r:"KALABURAGI",d:"KUSHTAGI",b:"HUNGUND"},{r:"KALABURAGI",d:"KUSHTAGI",b:"KOPPAL"},{r:"KALABURAGI",d:"KUSHTAGI",b:"KUSHTAGI"},
+  {r:"KALABURAGI",d:"LINGSUGUR",b:"DEVADURGA"},{r:"KALABURAGI",d:"LINGSUGUR",b:"LINGSUGUR"},{r:"KALABURAGI",d:"LINGSUGUR",b:"MANVI"},{r:"KALABURAGI",d:"LINGSUGUR",b:"RAICHUR"},{r:"KALABURAGI",d:"LINGSUGUR",b:"SINDHNUR"},{r:"KALABURAGI",d:"LINGSUGUR",b:"SIRWAR"},
+  {r:"KALABURAGI",d:"SEDAM",b:"CHINCHOLI"},{r:"KALABURAGI",d:"SEDAM",b:"KALAGI"},{r:"KALABURAGI",d:"SEDAM",b:"SEDAM"},{r:"KALABURAGI",d:"SEDAM",b:"SHAHAPUR"},{r:"KALABURAGI",d:"SEDAM",b:"YADGIR"},
+  {r:"KALABURAGI",d:"VIJAYAPURA",b:"BILAGI"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"JAMAKHANDI"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"LOKAPUR"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"MUDDEBIHAL"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"SINDAGI"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"TALIKOTI"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"TIKOTA"},{r:"KALABURAGI",d:"VIJAYAPURA",b:"VIJAYAPUR"},
+  {r:"TELANGANA",d:"MAHABOOBNAGAR",b:"GADWAL"},{r:"TELANGANA",d:"MAHABOOBNAGAR",b:"MAHABUB NAGAR"},{r:"TELANGANA",d:"MAHABOOBNAGAR",b:"MARIKAL"},{r:"TELANGANA",d:"MAHABOOBNAGAR",b:"TANDUR"},
+  {r:"TELANGANA",d:"SANGAREDDY",b:"KODANGAL"},{r:"TELANGANA",d:"SANGAREDDY",b:"NARAYANKHED"},{r:"TELANGANA",d:"SANGAREDDY",b:"SANGAREDDY"},{r:"TELANGANA",d:"SANGAREDDY",b:"ZAHEERABAD"},
+  {r:"TUMKUR",d:"BENGALORE -RURAL",b:"DABUSPET"},{r:"TUMKUR",d:"BENGALORE -RURAL",b:"DODDABALLAPURA"},{r:"TUMKUR",d:"BENGALORE -RURAL",b:"GOWRIBIDANUR"},
+  {r:"TUMKUR",d:"BENGALORE -URBAN",b:"CHANDAPURA"},{r:"TUMKUR",d:"BENGALORE -URBAN",b:"HEBBAL"},{r:"TUMKUR",d:"BENGALORE -URBAN",b:"J P NAGAR"},{r:"TUMKUR",d:"BENGALORE -URBAN",b:"KENGERI"},
+  {r:"TUMKUR",d:"CHIKKABALLAPUR",b:"BAGEPALLI"},{r:"TUMKUR",d:"CHIKKABALLAPUR",b:"CHIKBALLAPURA"},{r:"TUMKUR",d:"CHIKKABALLAPUR",b:"CHINTAMANI"},{r:"TUMKUR",d:"CHIKKABALLAPUR",b:"DEVANAHALLI"},{r:"TUMKUR",d:"CHIKKABALLAPUR",b:"SRINIVASPURA"},
+  {r:"TUMKUR",d:"CHIKKAMAGALURU",b:"CHIKKAMAGALURU"},{r:"TUMKUR",d:"CHIKKAMAGALURU",b:"MUDIGERE"},{r:"TUMKUR",d:"CHIKKAMAGALURU",b:"NR PURA"},
+  {r:"TUMKUR",d:"CHITRADURGA",b:"CHALLAKERE"},{r:"TUMKUR",d:"CHITRADURGA",b:"CHITRADURGA"},{r:"TUMKUR",d:"CHITRADURGA",b:"HIRIYUR"},{r:"TUMKUR",d:"CHITRADURGA",b:"JAGALORE"},
+  {r:"TUMKUR",d:"HOLALKERE",b:"CHANNAGIRI"},{r:"TUMKUR",d:"HOLALKERE",b:"HOLAKERE"},{r:"TUMKUR",d:"HOLALKERE",b:"HOSADURGA"},
+  {r:"TUMKUR",d:"KADUR",b:"AJJAMPURA"},{r:"TUMKUR",d:"KADUR",b:"KADUR"},{r:"TUMKUR",d:"KADUR",b:"PANCHANHALLI"},{r:"TUMKUR",d:"KADUR",b:"TARIKERE"},
+  {r:"TUMKUR",d:"KOLAR",b:"BANGARPET"},{r:"TUMKUR",d:"KOLAR",b:"BETHAMANGALA"},{r:"TUMKUR",d:"KOLAR",b:"KOLAR"},{r:"TUMKUR",d:"KOLAR",b:"MALUR"},
+  {r:"TUMKUR",d:"TIPTUR",b:"CHIKKANAYAKANAHALLI"},{r:"TUMKUR",d:"TIPTUR",b:"GUBBI"},{r:"TUMKUR",d:"TIPTUR",b:"HULIYAR"},{r:"TUMKUR",d:"TIPTUR",b:"TIPTUR"},{r:"TUMKUR",d:"TIPTUR",b:"TUREVEKERE"},
+  {r:"TUMKUR",d:"TUMKUR",b:"KORATAGERE"},{r:"TUMKUR",d:"TUMKUR",b:"KUNIGAL"},{r:"TUMKUR",d:"TUMKUR",b:"MADHUGIRI"},{r:"TUMKUR",d:"TUMKUR",b:"SIRA"},{r:"TUMKUR",d:"TUMKUR",b:"TUMKUR"},
+];
+
+// Build lookup: uppercase branch name → { region, district }
+const BRANCH_LOOKUP = {};
+BRANCH_REGION_MAP.forEach(m => { BRANCH_LOOKUP[m.b.toUpperCase()] = { region: m.r, district: m.d }; });
+
+function getBranchMapping(branchName) {
+  const key = (branchName || '').toUpperCase().trim();
+  return BRANCH_LOOKUP[key] || { region: 'UNMAPPED', district: 'UNMAPPED' };
+}
+
+function downloadBranchesExcel() {
+  const entries = adminData.entries;
+  const employees = adminData.employees;
+  const sourceFilter = document.getElementById('branches-source-filter')?.value || 'entries';
+
+  // Get unique branches (exclude Head Office and Corporate Office)
+  const branchesFromEntries = entries.map(e => e.location).filter(Boolean);
+  const branchesFromEmployees = employees.map(e => e.location).filter(Boolean);
+  const excludeLocations = ['Head Office', 'Corporate Office'];
+  const allBranches = [...new Set([...branchesFromEntries, ...branchesFromEmployees])].filter(b => !excludeLocations.includes(b)).sort();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const daysAgo = d => Math.floor((now - new Date(d)) / 86400000);
+
+  // Compute last update per branch with region/district mapping
+  const branchData = allBranches.map(branch => {
+    let lastUpdate = null;
+    if (sourceFilter === 'entries' || sourceFilter === 'both') {
+      const branchEntries = entries.filter(e => e.location === branch);
+      const maxEntry = branchEntries.reduce((max, e) => { const d = new Date(e.created_at); return d > max ? d : max; }, new Date(0));
+      if (branchEntries.length > 0 && maxEntry > new Date(0)) lastUpdate = maxEntry;
+    }
+    if (sourceFilter === 'received' || sourceFilter === 'both') {
+      const rdLogs = (adminData.receivedDateLogs || []).filter(r => r.location === branch);
+      const maxRd = rdLogs.reduce((max, r) => { const d = new Date(r.created_at); return d > max ? d : max; }, new Date(0));
+      if (rdLogs.length > 0 && maxRd > new Date(0)) {
+        if (!lastUpdate || maxRd > lastUpdate) lastUpdate = maxRd;
+      }
+    }
+    const mapping = getBranchMapping(branch);
+    let status = 'Inactive / No Updates';
+    if (lastUpdate) {
+      const d = daysAgo(lastUpdate);
+      if (d === 0) status = 'Updated Today';
+      else if (d <= 5) status = 'Last 5 Days';
+      else if (d <= 10) status = 'Last 10 Days';
+      else if (d <= 15) status = 'Last 15 Days';
+    }
+    return { branch, lastUpdate, status, region: mapping.region, district: mapping.district };
+  });
+
+  // Sort: no updates first, then oldest first
+  branchData.sort((a, b) => {
+    if (!a.lastUpdate && !b.lastUpdate) return a.branch.localeCompare(b.branch);
+    if (!a.lastUpdate) return -1;
+    if (!b.lastUpdate) return 1;
+    return a.lastUpdate - b.lastUpdate;
+  });
+
+  const bucketKeys = ['Inactive / No Updates', 'Last 15 Days', 'Last 10 Days', 'Last 5 Days', 'Updated Today'];
+
+  // --- Sheet 1: Overall (Sl.No + bucket columns with branch names) ---
+  const buckets = { 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+  branchData.forEach(b => buckets[b.status].push(b.branch));
+
+  const maxRows = Math.max(...Object.values(buckets).map(arr => arr.length), 1);
+  const overallRows = [];
+  for (let i = 0; i < maxRows; i++) {
+    const row = { 'Sl.No': i + 1 };
+    bucketKeys.forEach(k => { row[k] = buckets[k][i] || ''; });
+    overallRows.push(row);
+  }
+  overallRows.push({ 'Sl.No': '', 'Inactive / No Updates': 'Count: ' + buckets['Inactive / No Updates'].length, 'Last 15 Days': 'Count: ' + buckets['Last 15 Days'].length, 'Last 10 Days': 'Count: ' + buckets['Last 10 Days'].length, 'Last 5 Days': 'Count: ' + buckets['Last 5 Days'].length, 'Updated Today': 'Count: ' + buckets['Updated Today'].length });
+
+  const wsOverall = XLSX.utils.json_to_sheet(overallRows);
+  wsOverall['!cols'] = [{ wch: 6 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }];
+  wsOverall['!views'] = [{ state: 'frozen', ySplit: 1 }];
+
+  // --- Sheet 2: Region (bucket columns with branch names, grouped by region) ---
+  const regionGroups = {};
+  branchData.forEach(b => {
+    if (!regionGroups[b.region]) regionGroups[b.region] = { 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+    regionGroups[b.region][b.status].push(b.branch);
+  });
+
+  const regionRows = [];
+  let rSlNo = 1;
+  Object.keys(regionGroups).sort().forEach(region => {
+    const g = regionGroups[region];
+    // Region header row (just the name)
+    const row = { 'Sl.No': rSlNo++, 'Region': region };
+    bucketKeys.forEach(k => { row[k] = ''; });
+    regionRows.push(row);
+    // Branch names listed directly below
+    const maxR = Math.max(...bucketKeys.map(k => g[k].length), 0);
+    for (let i = 0; i < maxR; i++) {
+      const detail = { 'Sl.No': '', 'Region': '' };
+      bucketKeys.forEach(k => { detail[k] = g[k][i] || ''; });
+      regionRows.push(detail);
+    }
+  });
+
+  const wsRegion = XLSX.utils.json_to_sheet(regionRows);
+  wsRegion['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }];
+  wsRegion['!views'] = [{ state: 'frozen', ySplit: 1 }];
+
+  // --- Sheet 3: District (bucket columns with branch names, grouped by region > district) ---
+  const districtGroups = {};
+  branchData.forEach(b => {
+    const key = b.region + '||' + b.district;
+    if (!districtGroups[key]) districtGroups[key] = { region: b.region, district: b.district, 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+    districtGroups[key][b.status].push(b.branch);
+  });
+
+  const districtRows = [];
+  let dSlNo = 1;
+  Object.keys(districtGroups).sort().forEach(key => {
+    const g = districtGroups[key];
+    // District header row (just region + district name)
+    const row = { 'Sl.No': dSlNo++, 'Region': g.region, 'District': g.district };
+    bucketKeys.forEach(k => { row[k] = ''; });
+    districtRows.push(row);
+    // Branch names listed directly below
+    const maxD = Math.max(...bucketKeys.map(k => g[k].length), 0);
+    for (let i = 0; i < maxD; i++) {
+      const detail = { 'Sl.No': '', 'Region': '', 'District': '' };
+      bucketKeys.forEach(k => { detail[k] = g[k][i] || ''; });
+      districtRows.push(detail);
+    }
+  });
+
+  const wsDistrict = XLSX.utils.json_to_sheet(districtRows);
+  wsDistrict['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 22 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }];
+  wsDistrict['!views'] = [{ state: 'frozen', ySplit: 1 }];
+
+  // Build workbook with 3 sheets
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsOverall, 'Overall');
+  XLSX.utils.book_append_sheet(wb, wsRegion, 'Region');
+  XLSX.utils.book_append_sheet(wb, wsDistrict, 'District');
+  XLSX.writeFile(wb, 'Branches_' + todayStr + '.xlsx');
+}
+
 function toggleBranchContacts(headerEl) {
   const contacts = headerEl.nextElementSibling;
   const chevron = headerEl.querySelector('.branch-chevron');
