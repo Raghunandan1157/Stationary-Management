@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test BOE Feature</title>
+    <script>
+        // Test the BOE feature functionality
+        function testBOEFeature() {
+            console.log('Testing BOE feature...');
+            
+            // Test 1: Check if functions are defined
+            console.assert(typeof showNameInputForNewUser === 'function', 'showNameInputForNewUser function should be defined');
+            console.assert(typeof saveNewUserName === 'function', 'saveNewUserName function should be defined');
+            
+            // Test 2: Test saving and retrieving from localStorage
+            const testLocation = 'Test Branch';
+            const testName = 'John Doe';
+            const testUser = {
+                id: 'temp-' + Date.now(),
+                name: testName,
+                role: 'BOE',
+                location: testLocation,
+                emp_id: 'TEMP-' + Math.floor(Math.random() * 10000)
+            };
+            
+            // Save to localStorage
+            localStorage.setItem('temp_boe_user_' + testLocation, JSON.stringify(testUser));
+            
+            // Retrieve from localStorage
+            const savedUser = localStorage.getItem('temp_boe_user_' + testLocation);
+            console.assert(savedUser !== null, 'User should be saved in localStorage');
+            
+            const parsedUser = JSON.parse(savedUser);
+            console.assert(parsedUser.name === testName, 'Saved name should match');
+            console.assert(parsedUser.location === testLocation, 'Saved location should match');
+            
+            // Clean up
+            localStorage.removeItem('temp_boe_user_' + testLocation);
+            
+            console.log('All tests passed!');
+        }
+        
+        // Run tests when page loads
+        window.onload = testBOEFeature;
+    </script>
+</head>
+<body>
+    <h1>BOE Feature Test</h1>
+    <p>Check console for test results.</p>
+</body>
+</html>

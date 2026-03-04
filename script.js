@@ -167,9 +167,20 @@ async function loginSelectLocation() {
     const data = await supabaseFetch('employees', `select=*&location=eq.${encodeURIComponent(location)}&role=eq.BOE`);
 
     if (!data || data.length === 0) {
-      errorEl.textContent = 'No BOE profiles found at this location.';
-      errorEl.classList.remove('hidden');
-      return;
+      // Check if we have a saved name for this location in localStorage
+      const savedUserKey = 'temp_boe_user_' + location;
+      const savedUser = localStorage.getItem(savedUserKey);
+      
+      if (savedUser) {
+        // Use the saved user
+        currentEmployee = JSON.parse(savedUser);
+        loginConfirm();
+        return;
+      } else {
+        // Show name input field for new user
+        showNameInputForNewUser(location);
+        return;
+      }
     }
 
     // Auto-select if only 1 BOE profile
@@ -208,6 +219,78 @@ async function loginSelectLocation() {
   }
 }
 
+function showNameInputForNewUser(location) {
+  const errorEl = document.getElementById('login-error');
+  const locationSelect = document.getElementById('login-location-select');
+  
+  // Clear any previous error
+  errorEl.classList.add('hidden');
+  
+  // Create a container for the name input
+  const nameInputContainer = document.createElement('div');
+  nameInputContainer.id = 'name-input-container';
+  nameInputContainer.className = 'mt-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg';
+  
+  nameInputContainer.innerHTML = `
+    <h4 class="text-sm font-semibold text-slate-800 dark:text-white mb-2">No BOE profiles found</h4>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Please enter your name to continue:</p>
+    <div class="mb-4">
+      <input id="new-user-name" type="text" placeholder="Enter your full name" 
+             class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+    </div>
+    <button onclick="saveNewUserName('${location}')" 
+            class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+      <span class="material-symbols-outlined text-base">save</span>
+      Continue
+    </button>
+  `;
+  
+  // Insert the container after the location select
+  locationSelect.parentNode.insertBefore(nameInputContainer, locationSelect.nextSibling);
+  
+  // Disable the continue button to prevent proceeding without entering a name
+  const continueBtn = document.querySelector('button[onclick="loginSelectLocation()"]');
+  if (continueBtn) {
+    continueBtn.disabled = true;
+    continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
+  }
+}
+
+function saveNewUserName(location) {
+  const nameInput = document.getElementById('new-user-name');
+  const name = nameInput ? nameInput.value.trim() : '';
+  
+  if (!name) {
+    showToast('Please enter your name', 'delete');
+    return;
+  }
+  
+  // Create a temporary employee object
+  const tempEmployee = {
+    id: 'temp-' + Date.now(),
+    name: name,
+    role: 'BOE',
+    location: location,
+    emp_id: 'TEMP-' + Math.floor(Math.random() * 10000)
+  };
+  
+  // Save to localStorage for persistence
+  localStorage.setItem('temp_boe_user_' + location, JSON.stringify(tempEmployee));
+  
+  // Set as current employee and proceed with login
+  currentEmployee = tempEmployee;
+  selectedLocation = location;
+  
+  // Remove the name input container
+  const nameInputContainer = document.getElementById('name-input-container');
+  if (nameInputContainer) {
+    nameInputContainer.remove();
+  }
+  
+  // Proceed with login
+  loginConfirm();
+}
+
 function selectProfile(el, empId) {
   // Highlight selected
   document.querySelectorAll('.profile-option').forEach(btn => {
@@ -223,6 +306,19 @@ function loginBack() {
   document.getElementById('login-step2').classList.add('hidden');
   document.getElementById('login-step1').classList.remove('hidden');
   currentEmployee = null;
+  
+  // Remove name input container if it exists
+  const nameInputContainer = document.getElementById('name-input-container');
+  if (nameInputContainer) {
+    nameInputContainer.remove();
+  }
+  
+  // Re-enable the continue button
+  const continueBtn = document.querySelector('button[onclick="loginSelectLocation()"]');
+  if (continueBtn) {
+    continueBtn.disabled = false;
+    continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
 }
 
 function loginAdminStart() {
