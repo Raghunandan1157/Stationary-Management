@@ -1419,8 +1419,8 @@ async function renderBranches() {
   }
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const fifteenDaysAgo = new Date();
+  fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
 
   // Compute last update per branch
   const branchData = allBranches.map(branch => {
@@ -1449,7 +1449,7 @@ async function renderBranches() {
     }
 
     const updatedToday = lastUpdate && lastUpdate.toISOString().slice(0, 10) === todayStr;
-    const inactive = !lastUpdate || lastUpdate < sevenDaysAgo;
+    const inactive = !lastUpdate || lastUpdate < fifteenDaysAgo;
 
     let status = 'not-updated';
     if (updatedToday) status = 'updated';
