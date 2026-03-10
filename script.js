@@ -1448,7 +1448,7 @@ async function renderBranches() {
 
     const daysSince = lastUpdate ? Math.floor((now - lastUpdate) / 86400000) : null;
     const updatedToday = daysSince === 0;
-    const inactive = daysSince === null || daysSince > 15;
+    const inactive = daysSince === null;
 
     let status = 'not-updated';
     if (updatedToday) status = 'updated';
@@ -1493,8 +1493,8 @@ async function renderBranches() {
   // Group into time buckets
   const daysAgo = d => Math.floor((now - new Date(d)) / 86400000);
   const buckets = [
-    { key: 'inactive', label: 'Inactive / No Updates', icon: 'error', color: 'red', branches: [] },
-    { key: 'd15', label: 'Last 15 Days', icon: 'schedule', color: 'amber', branches: [] },
+    { key: 'inactive', label: 'No Updates', icon: 'error', color: 'red', branches: [] },
+    { key: 'd15', label: '15+ Days Ago', icon: 'schedule', color: 'amber', branches: [] },
     { key: 'd10', label: 'Last 10 Days', icon: 'schedule', color: 'orange', branches: [] },
     { key: 'd5', label: 'Last 5 Days', icon: 'update', color: 'blue', branches: [] },
     { key: 'today', label: 'Updated Today', icon: 'check_circle', color: 'green', branches: [] },
@@ -1503,8 +1503,7 @@ async function renderBranches() {
   filtered.forEach(b => {
     if (!b.lastUpdate) { buckets[0].branches.push(b); return; }
     const d = daysAgo(b.lastUpdate);
-    if (d > 15) buckets[0].branches.push(b);       // inactive / very old
-    else if (d > 10) buckets[1].branches.push(b);   // 11-15 days
+    if (d > 10) buckets[1].branches.push(b);        // 11+ days (including > 15)
     else if (d > 5) buckets[2].branches.push(b);    // 6-10 days
     else if (d >= 1) buckets[3].branches.push(b);   // 1-5 days
     else buckets[4].branches.push(b);               // today
@@ -1684,13 +1683,13 @@ function downloadBranchesExcel() {
       }
     }
     const mapping = getBranchMapping(branch);
-    let status = 'Inactive / No Updates';
+    let status = 'No Updates';
     if (lastUpdate) {
       const d = daysAgo(lastUpdate);
       if (d === 0) status = 'Updated Today';
       else if (d <= 5) status = 'Last 5 Days';
       else if (d <= 10) status = 'Last 10 Days';
-      else if (d <= 15) status = 'Last 15 Days';
+      else status = '15+ Days Ago';
     }
     return { branch, lastUpdate, status, region: mapping.region, district: mapping.district };
   });
@@ -1703,10 +1702,10 @@ function downloadBranchesExcel() {
     return a.lastUpdate - b.lastUpdate;
   });
 
-  const bucketKeys = ['Inactive / No Updates', 'Last 15 Days', 'Last 10 Days', 'Last 5 Days', 'Updated Today'];
+  const bucketKeys = ['No Updates', '15+ Days Ago', 'Last 10 Days', 'Last 5 Days', 'Updated Today'];
 
   // --- Sheet 1: Overall (Sl.No + bucket columns with branch names) ---
-  const buckets = { 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+  const buckets = { 'No Updates': [], '15+ Days Ago': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
   branchData.forEach(b => buckets[b.status].push(b.branch));
 
   const maxRows = Math.max(...Object.values(buckets).map(arr => arr.length), 1);
