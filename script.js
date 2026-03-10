@@ -1418,9 +1418,7 @@ async function renderBranches() {
     }
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const fifteenDaysAgo = new Date();
-  fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+  const now = new Date();
 
   // Compute last update per branch
   const branchData = allBranches.map(branch => {
@@ -1448,8 +1446,9 @@ async function renderBranches() {
       }
     }
 
-    const updatedToday = lastUpdate && lastUpdate.toISOString().slice(0, 10) === todayStr;
-    const inactive = !lastUpdate || lastUpdate < fifteenDaysAgo;
+    const daysSince = lastUpdate ? Math.floor((now - lastUpdate) / 86400000) : null;
+    const updatedToday = daysSince === 0;
+    const inactive = daysSince === null || daysSince > 15;
 
     let status = 'not-updated';
     if (updatedToday) status = 'updated';
@@ -1492,7 +1491,6 @@ async function renderBranches() {
   document.getElementById('branches-kpi-not-updated').textContent = notUpdatedCount;
 
   // Group into time buckets
-  const now = new Date();
   const daysAgo = d => Math.floor((now - new Date(d)) / 86400000);
   const buckets = [
     { key: 'inactive', label: 'Inactive / No Updates', icon: 'error', color: 'red', branches: [] },
