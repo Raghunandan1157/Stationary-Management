@@ -1715,7 +1715,7 @@ function downloadBranchesExcel() {
     bucketKeys.forEach(k => { row[k] = buckets[k][i] || ''; });
     overallRows.push(row);
   }
-  overallRows.push({ 'Sl.No': '', 'Inactive / No Updates': 'Count: ' + buckets['Inactive / No Updates'].length, 'Last 15 Days': 'Count: ' + buckets['Last 15 Days'].length, 'Last 10 Days': 'Count: ' + buckets['Last 10 Days'].length, 'Last 5 Days': 'Count: ' + buckets['Last 5 Days'].length, 'Updated Today': 'Count: ' + buckets['Updated Today'].length });
+  overallRows.push({ 'Sl.No': '', 'No Updates': 'Count: ' + buckets['No Updates'].length, '15+ Days Ago': 'Count: ' + buckets['15+ Days Ago'].length, 'Last 10 Days': 'Count: ' + buckets['Last 10 Days'].length, 'Last 5 Days': 'Count: ' + buckets['Last 5 Days'].length, 'Updated Today': 'Count: ' + buckets['Updated Today'].length });
 
   const wsOverall = XLSX.utils.json_to_sheet(overallRows);
   wsOverall['!cols'] = [{ wch: 6 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }];
@@ -1724,7 +1724,7 @@ function downloadBranchesExcel() {
   // --- Sheet 2: Region (bucket columns with branch names, grouped by region) ---
   const regionGroups = {};
   branchData.forEach(b => {
-    if (!regionGroups[b.region]) regionGroups[b.region] = { 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+    if (!regionGroups[b.region]) regionGroups[b.region] = { 'No Updates': [], '15+ Days Ago': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
     regionGroups[b.region][b.status].push(b.branch);
   });
 
@@ -1753,7 +1753,7 @@ function downloadBranchesExcel() {
   const districtGroups = {};
   branchData.forEach(b => {
     const key = b.region + '||' + b.district;
-    if (!districtGroups[key]) districtGroups[key] = { region: b.region, district: b.district, 'Inactive / No Updates': [], 'Last 15 Days': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
+    if (!districtGroups[key]) districtGroups[key] = { region: b.region, district: b.district, 'No Updates': [], '15+ Days Ago': [], 'Last 10 Days': [], 'Last 5 Days': [], 'Updated Today': [] };
     districtGroups[key][b.status].push(b.branch);
   });
 
