@@ -13,6 +13,36 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // TODO: Enable RLS policies on: stock_entries, employees, edit_log, deletion_log,
 // received_date_log, received_date_deletion_log, app_config
 
+// Helper: fetch with timeout and retry for slow/flaky mobile networks
+const FETCH_TIMEOUT = 15000; // 15 seconds
+const MAX_RETRIES = 3;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Request timed out. Please check your internet connection.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithRetry(url, options = {}, retries = MAX_RETRIES) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(url, options);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      // Exponential backoff: 1s, 2s, 4s
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+    }
+  }
+}
+
 // Helper: direct REST fetch from Supabase with automatic pagination
 // PostgREST returns max 1000 rows by default; this fetches ALL rows.
 async function supabaseFetch(table, params = '') {
@@ -20,7 +50,7 @@ async function supabaseFetch(table, params = '') {
   let allRows = [];
   let offset = 0;
   while (true) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    const res = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
       headers: {
         'apikey': SUPABASE_ANON,
         'Authorization': 'Bearer ' + SUPABASE_ANON,
@@ -39,7 +69,7 @@ async function supabaseFetch(table, params = '') {
 }
 
 async function supabaseInsert(table, rows) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+  const res = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
       'apikey': SUPABASE_ANON,
@@ -57,7 +87,7 @@ async function supabaseInsert(table, rows) {
 }
 
 async function supabaseUpdate(table, id, data) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+  const res = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: 'PATCH',
     headers: {
       'apikey': SUPABASE_ANON,
@@ -1193,7 +1223,7 @@ async function deleteReceivedDateLog(id) {
       return;
     }
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/received_date_log?id=eq.${id}`, {
+    const res = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/received_date_log?id=eq.${id}`, {
       method: 'DELETE',
       headers: {
         'apikey': SUPABASE_ANON,
@@ -2484,7 +2514,7 @@ async function deleteTxn(txnId) {
 
   try {
     // FIX #12: Delete first, then log — avoids phantom audit entries
-    const res = await fetch(SUPABASE_URL + '/rest/v1/stock_entries?id=eq.' + txnId, {
+    const res = await fetchWithRetry(SUPABASE_URL + '/rest/v1/stock_entries?id=eq.' + txnId, {
       method: 'DELETE',
       headers: {
         'apikey': SUPABASE_ANON,
